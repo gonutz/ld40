@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+var windowW, windowH = 640, 480
+
 func main() {
 	defer handlePanics()
 
@@ -23,7 +25,6 @@ func main() {
 
 	win.HideConsoleWindow()
 
-	windowW, windowH := 640, 480
 	var oldWindowPos w32.WINDOWPLACEMENT
 	toggleFullscreen := func(window w32.HWND) {
 		if win.IsFullscreen(window) {
@@ -43,10 +44,22 @@ func main() {
 			switch msg {
 			case w32.WM_KEYDOWN:
 				switch w {
+				case w32.VK_UP:
+					gameState.keyForwardDown = true
+				case w32.VK_DOWN:
+					gameState.keyBackwardDown = true
 				case w32.VK_ESCAPE:
 					win.CloseWindow(window)
 				case w32.VK_F11:
 					toggleFullscreen(window)
+				}
+				return 0
+			case w32.WM_KEYUP:
+				switch w {
+				case w32.VK_UP:
+					gameState.keyForwardDown = false
+				case w32.VK_DOWN:
+					gameState.keyBackwardDown = false
 				}
 				return 0
 			case w32.WM_SIZE:
@@ -242,8 +255,6 @@ func createGeometry(device *d3d9.Device) {
 		1, 0, 0,
 		0, 1, 0,
 	})
-
-	mvp = d3dmath.Identity4()
 }
 
 func createVertexBuffer(device *d3d9.Device, data []float32) *d3d9.VertexBuffer {
@@ -290,15 +301,31 @@ func deg2rad(x float32) float32 {
 }
 
 func updateGame() {
-	gameState.rotDeg++
-	if gameState.rotDeg > 360 {
-		gameState.rotDeg -= 360
+	if gameState.keyForwardDown {
+		gameState.viewDist -= gameState.moveSpeed
 	}
-	mvp = d3dmath.RotateZ(deg2rad(gameState.rotDeg))
+	if gameState.keyBackwardDown {
+		gameState.viewDist += gameState.moveSpeed
+	}
+
 	gameState.red += 0.01
 	if gameState.red > 1 {
 		gameState.red -= 1
 	}
+
+	gameState.rotDeg++
+	if gameState.rotDeg > 360 {
+		gameState.rotDeg -= 360
+	}
+	m := d3dmath.RotateZ(deg2rad(gameState.rotDeg))
+	v := d3dmath.Translate(0, 0, gameState.viewDist)
+	p := d3dmath.Perspective(
+		deg2rad(50),
+		float32(windowW)/float32(windowH),
+		0.1,
+		100,
+	)
+	mvp = m.Mul(v).Mul(p)
 }
 
 func renderGeometry(device *d3d9.Device) {
@@ -312,6 +339,15 @@ func renderGeometry(device *d3d9.Device) {
 }
 
 var gameState struct {
-	rotDeg float32
-	red    float32
+	rotDeg          float32
+	red             float32
+	viewDist        float32
+	moveSpeed       float32
+	keyForwardDown  bool
+	keyBackwardDown bool
+}
+
+func init() {
+	gameState.viewDist = 2
+	gameState.moveSpeed = 0.1
 }
