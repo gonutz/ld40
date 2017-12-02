@@ -37,7 +37,8 @@ func main() {
 				}
 				return 0
 			case w32.WM_SIZE:
-				windowW, windowH = int((uint(l))&0xFFFF), int((uint(l)>>16)&0xFFFF)
+				windowW = int((uint(l)) & 0xFFFF)
+				windowH = int((uint(l) >> 16) & 0xFFFF)
 				return 0
 			case w32.WM_DESTROY:
 				w32.PostQuitMessage(0)
@@ -108,7 +109,13 @@ func main() {
 					// TODO reset textures
 				}
 			} else {
-				device.Clear(nil, d3d9.CLEAR_TARGET, d3d9.ColorRGB(255, 0, 0), 1, 0)
+				device.Clear(
+					nil,
+					d3d9.CLEAR_TARGET,
+					d3d9.ColorRGB(255, 0, 0),
+					1,
+					0,
+				)
 				presentErr := device.Present(
 					&d3d9.RECT{0, 0, int32(windowW), int32(windowH)},
 					nil, 0, nil,
