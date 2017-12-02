@@ -2,10 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/gonutz/d3d9"
-	"github.com/gonutz/d3dmath"
-	"github.com/gonutz/w32"
-	"github.com/gonutz/win"
 	"io/ioutil"
 	"math"
 	"os"
@@ -14,6 +10,11 @@ import (
 	"runtime"
 	"runtime/debug"
 	"time"
+
+	"github.com/gonutz/d3d9"
+	"github.com/gonutz/d3dmath"
+	"github.com/gonutz/w32"
+	"github.com/gonutz/win"
 )
 
 var windowW, windowH = 640, 480
@@ -29,9 +30,22 @@ func main() {
 	toggleFullscreen := func(window w32.HWND) {
 		if win.IsFullscreen(window) {
 			win.DisableFullscreen(window, oldWindowPos)
+			w32.ShowCursor(false)
 		} else {
 			oldWindowPos = win.EnableFullscreen(window)
 		}
+	}
+
+	active := false
+
+	computeScreenCenter := func(window w32.HWND) {
+		if !active {
+			return
+		}
+		gameState.centerX, gameState.centerY = w32.ClientToScreen(window, windowW/2, windowH/2)
+		gameState.mouseX = gameState.centerX
+		gameState.mouseY = gameState.centerY
+		w32.SetCursorPos(gameState.centerX, gameState.centerY)
 	}
 
 	window, err := win.NewWindow(
@@ -42,15 +56,22 @@ func main() {
 		"LD40window",
 		func(window w32.HWND, msg uint32, w, l uintptr) uintptr {
 			switch msg {
+			case w32.WM_MOUSEMOVE:
+				x := int((uint(l)) & 0xFFFF)
+				y := int((uint(l) >> 16) & 0xFFFF)
+				gameState.mouseX, gameState.mouseY = w32.ClientToScreen(window, x, y)
+				return 0
+			case w32.WM_MOUSELEAVE:
+				return 0
 			case w32.WM_KEYDOWN:
 				switch w {
-				case w32.VK_UP:
+				case 'W':
 					gameState.keyForwardDown = true
-				case w32.VK_DOWN:
+				case 'S':
 					gameState.keyBackwardDown = true
-				case w32.VK_LEFT:
+				case 'A':
 					gameState.keyLeftDown = true
-				case w32.VK_RIGHT:
+				case 'D':
 					gameState.keyRightDown = true
 				case w32.VK_ESCAPE:
 					win.CloseWindow(window)
@@ -60,19 +81,26 @@ func main() {
 				return 0
 			case w32.WM_KEYUP:
 				switch w {
-				case w32.VK_UP:
+				case 'W':
 					gameState.keyForwardDown = false
-				case w32.VK_DOWN:
+				case 'S':
 					gameState.keyBackwardDown = false
-				case w32.VK_LEFT:
+				case 'A':
 					gameState.keyLeftDown = false
-				case w32.VK_RIGHT:
+				case 'D':
 					gameState.keyRightDown = false
 				}
 				return 0
 			case w32.WM_SIZE:
 				windowW = int((uint(l)) & 0xFFFF)
 				windowH = int((uint(l) >> 16) & 0xFFFF)
+				computeScreenCenter(window)
+				return 0
+			case w32.WM_MOVE:
+				computeScreenCenter(window)
+				return 0
+			case w32.WM_ACTIVATE:
+				active = w != 0
 				return 0
 			case w32.WM_DESTROY:
 				w32.PostQuitMessage(0)
@@ -85,6 +113,7 @@ func main() {
 	check(err)
 	w32.SetWindowText(window, "LD 40 - The more you have, the worse it is")
 	toggleFullscreen(window)
+	computeScreenCenter(window)
 
 	d3d, err := d3d9.Create(d3d9.SDK_VERSION)
 	check(err)
@@ -142,7 +171,9 @@ func main() {
 		} else {
 			lastFrame = now
 
-			updateGame()
+			if active {
+				updateGame()
+			}
 
 			if deviceIsLost {
 				_, err = device.Reset(presentParameters)
@@ -319,25 +350,39 @@ func deg2rad(x float32) float32 {
 }
 
 func updateGame() {
+	mouseDx := gameState.mouseX - gameState.centerX
+	mouseDy := gameState.mouseY - gameState.centerY
+	w32.SetCursorPos(gameState.centerX, gameState.centerY)
+
 	if gameState.keyForwardDown {
 		gameState.camPos = gameState.camPos.Add(
-			d3dmath.Vec3{0, 0, -gameState.moveSpeed},
+			gameState.viewDir.MulScalar(gameState.moveSpeed),
 		)
 	}
 	if gameState.keyBackwardDown {
 		gameState.camPos = gameState.camPos.Add(
-			d3dmath.Vec3{0, 0, gameState.moveSpeed},
+			gameState.viewDir.MulScalar(-gameState.moveSpeed),
 		)
 	}
 	if gameState.keyLeftDown {
 		gameState.camPos = gameState.camPos.Add(
-			d3dmath.Vec3{gameState.moveSpeed, 0, 0},
+			gameState.viewDir.Cross(d3dmath.Vec3{0, 1, 0}).
+				MulScalar(gameState.moveSpeed),
 		)
 	}
 	if gameState.keyRightDown {
 		gameState.camPos = gameState.camPos.Add(
-			d3dmath.Vec3{-gameState.moveSpeed, 0, 0},
+			d3dmath.Vec3{0, 1, 0}.Cross(gameState.viewDir).
+				MulScalar(gameState.moveSpeed),
 		)
+	}
+	if mouseDx != 0 {
+		gameState.viewDir = gameState.viewDir.Homgeneous().MulMat(
+			d3dmath.RotateY(deg2rad(float32(mouseDx) * 0.125)),
+		).DropW().Normalized()
+	}
+	if mouseDy != 0 {
+		// TODO some looking up and down
 	}
 
 	gameState.red += 0.01
@@ -350,10 +395,10 @@ func updateGame() {
 	m := d3dmath.RotateZ(deg2rad(gameState.rotDeg))
 	m = d3dmath.Mul4(m, d3dmath.RotateX(deg2rad(gameState.rotDeg*0.753)))
 	m = d3dmath.Mul4(m, d3dmath.RotateY(deg2rad(gameState.rotDeg*1.174)))
-	v := d3dmath.Translate(
-		gameState.camPos[0],
-		gameState.camPos[1],
-		gameState.camPos[2],
+	v := d3dmath.LookAt(
+		gameState.camPos,
+		gameState.camPos.Add(gameState.viewDir),
+		d3dmath.Vec3{0, 1, 0},
 	)
 	p := d3dmath.Perspective(
 		deg2rad(fieldOfViewDeg),
@@ -361,13 +406,14 @@ func updateGame() {
 		0.001,
 		100,
 	)
-	mvp = d3dmath.Mul4(m, v, p).Transposed()
+	mvp = d3dmath.Mul4(m, v, p)
 }
 
 func renderGeometry(device *d3d9.Device) {
 	check(device.SetVertexShader(colorVS))
 	check(device.SetPixelShader(colorPS))
-	check(device.SetVertexShaderConstantF(0, mvp[:]))
+	shaderMVP := mvp.Transposed() // shader expected column-major ordering
+	check(device.SetVertexShaderConstantF(0, shaderMVP[:]))
 	check(device.SetVertexShaderConstantF(4, []float32{gameState.red, 0, 1, 1}))
 	check(device.SetVertexDeclaration(colorDecl))
 	check(device.SetStreamSource(0, vertices, 0, 3*4))
@@ -377,6 +423,9 @@ func renderGeometry(device *d3d9.Device) {
 const fieldOfViewDeg = 90
 
 var gameState struct {
+	centerX, centerY int
+	mouseX, mouseY   int
+
 	keyForwardDown  bool
 	keyBackwardDown bool
 	keyLeftDown     bool
@@ -386,11 +435,11 @@ var gameState struct {
 	red       float32
 	moveSpeed float32
 	camPos    d3dmath.Vec3
-	viewDir   d3dmath.Vec3
+	viewDir   d3dmath.Vec3 // must be kept unit length
 }
 
 func init() {
 	gameState.moveSpeed = 0.1
-	gameState.camPos = d3dmath.Vec3{0, 0, 2}
-	gameState.viewDir = d3dmath.Vec3{0, 0, 0}
+	gameState.camPos = d3dmath.Vec3{0, 0, -5}
+	gameState.viewDir = d3dmath.Vec3{0, 0, 1}.Normalized()
 }
