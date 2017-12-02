@@ -1,5 +1,10 @@
 # ld40
+
 Ludum Dare 40 Entry - The more you have, the worse it is
+
+# Controls
+
+`F11` to toggle fullscreen.
 
 # Build
 
