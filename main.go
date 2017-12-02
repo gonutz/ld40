@@ -21,7 +21,7 @@ func main() {
 
 	win.HideConsoleWindow()
 
-	windowW, windowH := 800, 600
+	windowW, windowH := 640, 480
 	var oldWindowPos w32.WINDOWPLACEMENT
 	toggleFullscreen := func(window w32.HWND) {
 		if win.IsFullscreen(window) {
