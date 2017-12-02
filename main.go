@@ -48,6 +48,10 @@ func main() {
 					gameState.keyForwardDown = true
 				case w32.VK_DOWN:
 					gameState.keyBackwardDown = true
+				case w32.VK_LEFT:
+					gameState.keyLeftDown = true
+				case w32.VK_RIGHT:
+					gameState.keyRightDown = true
 				case w32.VK_ESCAPE:
 					win.CloseWindow(window)
 				case w32.VK_F11:
@@ -60,6 +64,10 @@ func main() {
 					gameState.keyForwardDown = false
 				case w32.VK_DOWN:
 					gameState.keyBackwardDown = false
+				case w32.VK_LEFT:
+					gameState.keyLeftDown = false
+				case w32.VK_RIGHT:
+					gameState.keyRightDown = false
 				}
 				return 0
 			case w32.WM_SIZE:
@@ -312,10 +320,24 @@ func deg2rad(x float32) float32 {
 
 func updateGame() {
 	if gameState.keyForwardDown {
-		gameState.viewDist -= gameState.moveSpeed
+		gameState.camPos = gameState.camPos.Add(
+			d3dmath.Vec3{0, 0, -gameState.moveSpeed},
+		)
 	}
 	if gameState.keyBackwardDown {
-		gameState.viewDist += gameState.moveSpeed
+		gameState.camPos = gameState.camPos.Add(
+			d3dmath.Vec3{0, 0, gameState.moveSpeed},
+		)
+	}
+	if gameState.keyLeftDown {
+		gameState.camPos = gameState.camPos.Add(
+			d3dmath.Vec3{gameState.moveSpeed, 0, 0},
+		)
+	}
+	if gameState.keyRightDown {
+		gameState.camPos = gameState.camPos.Add(
+			d3dmath.Vec3{-gameState.moveSpeed, 0, 0},
+		)
 	}
 
 	gameState.red += 0.01
@@ -328,7 +350,11 @@ func updateGame() {
 	m := d3dmath.RotateZ(deg2rad(gameState.rotDeg))
 	m = d3dmath.Mul4(m, d3dmath.RotateX(deg2rad(gameState.rotDeg*0.753)))
 	m = d3dmath.Mul4(m, d3dmath.RotateY(deg2rad(gameState.rotDeg*1.174)))
-	v := d3dmath.Translate(0, 0, gameState.viewDist)
+	v := d3dmath.Translate(
+		gameState.camPos[0],
+		gameState.camPos[1],
+		gameState.camPos[2],
+	)
 	p := d3dmath.Perspective(
 		deg2rad(fieldOfViewDeg),
 		float32(windowW)/float32(windowH),
@@ -351,15 +377,20 @@ func renderGeometry(device *d3d9.Device) {
 const fieldOfViewDeg = 90
 
 var gameState struct {
-	rotDeg          float32
-	red             float32
-	viewDist        float32
-	moveSpeed       float32
 	keyForwardDown  bool
 	keyBackwardDown bool
+	keyLeftDown     bool
+	keyRightDown    bool
+
+	rotDeg    float32
+	red       float32
+	moveSpeed float32
+	camPos    d3dmath.Vec3
+	viewDir   d3dmath.Vec3
 }
 
 func init() {
-	gameState.viewDist = 2
 	gameState.moveSpeed = 0.1
+	gameState.camPos = d3dmath.Vec3{0, 0, 2}
+	gameState.viewDir = d3dmath.Vec3{0, 0, 0}
 }
