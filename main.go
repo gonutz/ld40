@@ -91,10 +91,10 @@ func main() {
 	presentParameters := d3d9.PRESENT_PARAMETERS{
 		Windowed:         1,
 		HDeviceWindow:    d3d9.HWND(window),
-		SwapEffect:       d3d9.SWAPEFFECT_DISCARD,
+		SwapEffect:       d3d9.SWAPEFFECT_COPY, // so Present can use rects
 		BackBufferWidth:  uint32(windowW),
 		BackBufferHeight: uint32(windowH),
-		BackBufferFormat: d3d9.FMT_A8R8G8B8,
+		BackBufferFormat: d3d9.FMT_UNKNOWN,
 		BackBufferCount:  1,
 	}
 	device, actualPP, err := d3d.CreateDevice(
@@ -107,6 +107,11 @@ func main() {
 	presentParameters = actualPP
 	check(err)
 	defer device.Release()
+
+	// NOTE comment this to switch between starting in fullscreen or not
+	//      this has to come after the presentParameters so the back buffer has
+	//      the size of the whole screen
+	//toggleFullscreen(window)
 
 	setRenderState := func(device *d3d9.Device) {
 		device.SetRenderState(d3d9.RS_CULLMODE, d3d9.CULL_NONE)
@@ -140,9 +145,18 @@ func main() {
 					// TODO reset vertex declarations
 					// TODO reset textures
 				}
-			} else {
+			}
+
+			if !deviceIsLost {
 				device.SetViewport(
-					d3d9.VIEWPORT{0, 0, uint32(windowW), uint32(windowH), 0, 1},
+					d3d9.VIEWPORT{
+						X:      0,
+						Y:      0,
+						Width:  uint32(windowW),
+						Height: uint32(windowH),
+						MinZ:   0,
+						MaxZ:   1,
+					},
 				)
 
 				device.Clear(
@@ -155,12 +169,8 @@ func main() {
 				device.BeginScene()
 				renderGeometry(device)
 				device.EndScene()
-				presentErr := device.Present(
-					&d3d9.RECT{0, 0, int32(windowW), int32(windowH)},
-					nil,
-					0,
-					nil,
-				)
+				r := &d3d9.RECT{0, 0, int32(windowW), int32(windowH)}
+				presentErr := device.Present(r, r, 0, nil)
 				if presentErr != nil {
 					if presentErr.Code() == d3d9.ERR_DEVICELOST {
 						deviceIsLost = true
@@ -313,19 +323,19 @@ func updateGame() {
 		gameState.red -= 1
 	}
 
-	gameState.rotDeg++
-	if gameState.rotDeg > 360 {
-		gameState.rotDeg -= 360
-	}
+	gameState.rotDeg += 1.4
+
 	m := d3dmath.RotateZ(deg2rad(gameState.rotDeg))
+	m = d3dmath.Mul4(m, d3dmath.RotateX(deg2rad(gameState.rotDeg*0.753)))
+	m = d3dmath.Mul4(m, d3dmath.RotateY(deg2rad(gameState.rotDeg*1.174)))
 	v := d3dmath.Translate(0, 0, gameState.viewDist)
 	p := d3dmath.Perspective(
-		deg2rad(50),
+		deg2rad(fieldOfViewDeg),
 		float32(windowW)/float32(windowH),
-		0.1,
+		0.001,
 		100,
 	)
-	mvp = m.Mul(v).Mul(p)
+	mvp = d3dmath.Mul4(m, v, p).Transposed()
 }
 
 func renderGeometry(device *d3d9.Device) {
@@ -337,6 +347,8 @@ func renderGeometry(device *d3d9.Device) {
 	check(device.SetStreamSource(0, vertices, 0, 3*4))
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 1)
 }
+
+const fieldOfViewDeg = 90
 
 var gameState struct {
 	rotDeg          float32
