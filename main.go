@@ -295,13 +295,17 @@ func updateGame() {
 		gameState.rotDeg -= 360
 	}
 	mvp = d3dmath.RotateZ(deg2rad(gameState.rotDeg))
+	gameState.red += 0.01
+	if gameState.red > 1 {
+		gameState.red -= 1
+	}
 }
 
 func renderGeometry(device *d3d9.Device) {
 	check(device.SetVertexShader(colorVS))
 	check(device.SetPixelShader(colorPS))
 	check(device.SetVertexShaderConstantF(0, mvp[:]))
-	check(device.SetVertexShaderConstantF(4, []float32{1, 1, 1, 1}))
+	check(device.SetVertexShaderConstantF(4, []float32{gameState.red, 0, 1, 1}))
 	check(device.SetVertexDeclaration(colorDecl))
 	check(device.SetStreamSource(0, vertices, 0, 3*4))
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 1)
@@ -309,4 +313,5 @@ func renderGeometry(device *d3d9.Device) {
 
 var gameState struct {
 	rotDeg float32
+	red    float32
 }
