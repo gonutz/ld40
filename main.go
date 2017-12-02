@@ -101,6 +101,9 @@ func main() {
 	}
 	setRenderState(device)
 
+	createGeometry(device)
+	defer destroyGeometry()
+
 	deviceIsLost := false
 	const frameDelay = time.Second / 60
 	lastFrame := time.Now().Add(-frameDelay)
@@ -132,6 +135,9 @@ func main() {
 					1,
 					0,
 				)
+				device.BeginScene()
+				renderGeometry(device)
+				device.EndScene()
 				presentErr := device.Present(
 					&d3d9.RECT{0, 0, int32(windowW), int32(windowH)},
 					nil,
@@ -183,4 +189,100 @@ func handlePanics() {
 			w32.MB_OK|w32.MB_ICONERROR|w32.MB_TOPMOST,
 		)
 	}
+}
+
+var (
+	colorVS   *d3d9.VertexShader
+	colorPS   *d3d9.PixelShader
+	colorDecl *d3d9.VertexDeclaration
+	vertices  *d3d9.VertexBuffer
+)
+
+func createGeometry(device *d3d9.Device) {
+	var err error
+
+	colorVS, err = device.CreateVertexShaderFromBytes(vertexShader_uniform_color)
+	check(err)
+	colorPS, err = device.CreatePixelShaderFromBytes(pixelShader_uniform_color)
+	check(err)
+
+	colorDecl, err = device.CreateVertexDeclaration(
+		[]d3d9.VERTEXELEMENT{
+			d3d9.VERTEXELEMENT{
+				Stream:     0,
+				Offset:     0,
+				Type:       d3d9.DECLTYPE_FLOAT3,
+				Method:     d3d9.DECLMETHOD_DEFAULT,
+				Usage:      d3d9.DECLUSAGE_POSITION,
+				UsageIndex: 0,
+			},
+			d3d9.VERTEXELEMENT{
+				Stream:     0,
+				Offset:     3 * 4,
+				Type:       d3d9.DECLTYPE_FLOAT4,
+				Method:     d3d9.DECLMETHOD_DEFAULT,
+				Usage:      d3d9.DECLUSAGE_COLOR,
+				UsageIndex: 0,
+			},
+			d3d9.DeclEnd(),
+		},
+	)
+	check(err)
+
+	vertices = createVertexBuffer(device, []float32{
+		0, 0, 0,
+		1, 0, 0,
+		0, 1, 0,
+	})
+}
+
+func createVertexBuffer(device *d3d9.Device, data []float32) *d3d9.VertexBuffer {
+	buf, err := device.CreateVertexBuffer(
+		uint(len(data))*4,
+		d3d9.USAGE_WRITEONLY,
+		0,
+		d3d9.POOL_DEFAULT,
+		0,
+	)
+	check(err)
+	mem, err := buf.Lock(0, 0, d3d9.LOCK_DISCARD)
+	check(err)
+	mem.SetFloat32s(0, data)
+	check(buf.Unlock())
+	return buf
+}
+
+func destroyGeometry() {
+	if colorVS != nil {
+		colorVS.Release()
+		colorVS = nil
+	}
+	if colorPS != nil {
+		colorPS.Release()
+		colorPS = nil
+	}
+	if colorDecl != nil {
+		colorDecl.Release()
+		colorDecl = nil
+	}
+	if vertices != nil {
+		vertices.Release()
+		vertices = nil
+	}
+}
+
+func renderGeometry(device *d3d9.Device) {
+	check(device.SetVertexShader(colorVS))
+	check(device.SetPixelShader(colorPS))
+	// TODO for now set MVP matrix to identitiy
+	check(device.SetVertexShaderConstantF(0, []float32{
+		1, 0, 0, 0,
+		0, 1, 0, 0,
+		0, 0, 1, 0,
+		0, 0, 0, 1,
+	}))
+	check(device.SetVertexShaderConstantF(4, []float32{1, 1, 1, 1}))
+	check(device.SetVertexDeclaration(colorDecl))
+	check(device.SetStreamSource(0, vertices, 0, 3*4))
+	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 1)
 }
