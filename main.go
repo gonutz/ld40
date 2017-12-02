@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"github.com/gonutz/d3d9"
+	"github.com/gonutz/d3dmath"
 	"github.com/gonutz/w32"
 	"github.com/gonutz/win"
 	"io/ioutil"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -114,6 +116,8 @@ func main() {
 		} else {
 			lastFrame = now
 
+			updateGame()
+
 			if deviceIsLost {
 				_, err = device.Reset(presentParameters)
 				if err == nil {
@@ -192,10 +196,14 @@ func handlePanics() {
 }
 
 var (
+	// d3d9 assets
 	colorVS   *d3d9.VertexShader
 	colorPS   *d3d9.PixelShader
 	colorDecl *d3d9.VertexDeclaration
 	vertices  *d3d9.VertexBuffer
+
+	// game related rendering data
+	mvp d3dmath.Mat4
 )
 
 func createGeometry(device *d3d9.Device) {
@@ -234,6 +242,8 @@ func createGeometry(device *d3d9.Device) {
 		1, 0, 0,
 		0, 1, 0,
 	})
+
+	mvp = d3dmath.Identity4()
 }
 
 func createVertexBuffer(device *d3d9.Device, data []float32) *d3d9.VertexBuffer {
@@ -271,18 +281,32 @@ func destroyGeometry() {
 	}
 }
 
+func rad2deg(x float32) float32 {
+	return x * 180 / math.Pi
+}
+
+func deg2rad(x float32) float32 {
+	return x * math.Pi / 180
+}
+
+func updateGame() {
+	gameState.rotDeg++
+	if gameState.rotDeg > 360 {
+		gameState.rotDeg -= 360
+	}
+	mvp = d3dmath.RotateZ(deg2rad(gameState.rotDeg))
+}
+
 func renderGeometry(device *d3d9.Device) {
 	check(device.SetVertexShader(colorVS))
 	check(device.SetPixelShader(colorPS))
-	// TODO for now set MVP matrix to identitiy
-	check(device.SetVertexShaderConstantF(0, []float32{
-		1, 0, 0, 0,
-		0, 1, 0, 0,
-		0, 0, 1, 0,
-		0, 0, 0, 1,
-	}))
+	check(device.SetVertexShaderConstantF(0, mvp[:]))
 	check(device.SetVertexShaderConstantF(4, []float32{1, 1, 1, 1}))
 	check(device.SetVertexDeclaration(colorDecl))
 	check(device.SetStreamSource(0, vertices, 0, 3*4))
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 1)
+}
+
+var gameState struct {
+	rotDeg float32
 }
