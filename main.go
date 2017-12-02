@@ -22,18 +22,29 @@ func main() {
 	win.HideConsoleWindow()
 
 	windowW, windowH := 800, 600
+	var oldWindowPos w32.WINDOWPLACEMENT
+	toggleFullscreen := func(window w32.HWND) {
+		if win.IsFullscreen(window) {
+			win.DisableFullscreen(window, oldWindowPos)
+		} else {
+			oldWindowPos = win.EnableFullscreen(window)
+		}
+	}
 
 	window, err := win.NewWindow(
-		0,
-		0,
+		w32.CW_USEDEFAULT,
+		w32.CW_USEDEFAULT,
 		windowW,
 		windowH,
 		"LD40window",
 		func(window w32.HWND, msg uint32, w, l uintptr) uintptr {
 			switch msg {
 			case w32.WM_KEYDOWN:
-				if w == w32.VK_ESCAPE {
+				switch w {
+				case w32.VK_ESCAPE:
 					win.CloseWindow(window)
+				case w32.VK_F11:
+					toggleFullscreen(window)
 				}
 				return 0
 			case w32.WM_SIZE:
@@ -49,7 +60,8 @@ func main() {
 		},
 	)
 	check(err)
-	win.EnableFullscreen(window)
+	w32.SetWindowText(window, "LD 40 - The more you have, the worse it is")
+	toggleFullscreen(window)
 
 	d3d, err := d3d9.Create(d3d9.SDK_VERSION)
 	check(err)
@@ -109,6 +121,10 @@ func main() {
 					// TODO reset textures
 				}
 			} else {
+				device.SetViewport(
+					d3d9.VIEWPORT{0, 0, uint32(windowW), uint32(windowH), 0, 1},
+				)
+
 				device.Clear(
 					nil,
 					d3d9.CLEAR_TARGET,
@@ -118,7 +134,9 @@ func main() {
 				)
 				presentErr := device.Present(
 					&d3d9.RECT{0, 0, int32(windowW), int32(windowH)},
-					nil, 0, nil,
+					nil,
+					0,
+					nil,
 				)
 				if presentErr != nil {
 					if presentErr.Code() == d3d9.ERR_DEVICELOST {
