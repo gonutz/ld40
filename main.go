@@ -467,18 +467,51 @@ func createGeometry(device *d3d9.Device) {
 	sky = loadTexture(device, "sky.png")
 
 	floor = loadTexture(device, "floor.png")
-	floorVertices = createVertexBuffer(device, heightFieldVertices())
+	//heights := heightField
+	heights := loadHeightField("heights.png", 3.0/128)
+	heightFieldSize = len(heights) - 1
+	//floorVertices = createVertexBuffer(device, heightFieldVertices(heights))
+	floorVertices = createVertexBuffer(
+		device,
+		heightFieldVertices(heights),
+	)
+}
+
+func loadHeightField(path string, scale float32) [][]float32 {
+	img := loadPng(path)
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w != h {
+		panic("can only handle square height fields right now")
+	}
+	heights := make([]float32, 0, w*h)
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			heights = append(heights, (float32(img.NRGBAAt(x, y).R)-127)*scale)
+		}
+	}
+
+	// slice the linear array into a 2D array for the result
+	result := make([][]float32, h)
+	for i := range result {
+		result[i] = heights[i*w : (i+1)*w]
+	}
+	return result
 }
 
 var heightField = [][]float32{
 	{0.1, 0, 0, 0, 0},
 	{0, 0, 0, 0, 0},
 	{0, 0, -0.05, 0, 0},
-	{0, 0, 1.075, 0, 0},
+	{0, 0, 0.575, 0, 0},
 	{0, 0, 0, 0, 0.05},
 }
 
-func heightFieldVertices() []float32 {
+const heightFieldScale = 0.5
+
+var heightFieldSize int
+
+func heightFieldVertices(heightField [][]float32) []float32 {
 	size := len(heightField) - 1
 	h := make([]float32, 0, size*size*6*(3+2))
 	for x := 0; x < size; x++ {
@@ -681,7 +714,7 @@ func updateGame() {
 }
 
 func skyMVP() d3dmath.Mat4 {
-	m := d3dmath.Translate(0, -0.05, 0)
+	m := d3dmath.Translate(0, 0, 0)
 	v := d3dmath.LookAt(
 		d3dmath.Vec3{},
 		gameState.viewDir,
@@ -719,10 +752,10 @@ func renderGeometry(device *d3d9.Device) {
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 2)
 
 	// draw floor
-	size := len(heightField) - 1
+	size := heightFieldSize
 	floorMVP := d3dmath.Mul4(
 		d3dmath.Translate(-float32(size)/2, 0, -float32(size)/2),
-		d3dmath.Scale(3, 3, 3),
+		d3dmath.Scale(heightFieldScale, heightFieldScale, heightFieldScale),
 		mvp,
 	).Transposed()
 	check(device.SetVertexShaderConstantF(0, floorMVP[:]))
@@ -751,6 +784,6 @@ var gameState struct {
 
 func init() {
 	gameState.moveSpeed = 0.1
-	gameState.camPos = d3dmath.Vec3{0, 0.5, -10}
-	gameState.viewDir = d3dmath.Vec3{0, 0, 1}.Normalized()
+	gameState.camPos = d3dmath.Vec3{0, 0.5, 2}
+	gameState.viewDir = d3dmath.Vec3{0, 0, -1}.Normalized()
 }
