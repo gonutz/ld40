@@ -268,17 +268,19 @@ func handlePanics() {
 
 var (
 	// d3d9 assets
-	colorVS     *d3d9.VertexShader
-	colorPS     *d3d9.PixelShader
-	colorDecl   *d3d9.VertexDeclaration
-	texVS       *d3d9.VertexShader
-	texPS       *d3d9.PixelShader
-	texDecl     *d3d9.VertexDeclaration
-	vertices    *d3d9.VertexBuffer
-	triangles   *d3d9.VertexBuffer
-	texture     *d3d9.Texture
-	sky         *d3d9.Texture
-	skyVertices *d3d9.VertexBuffer
+	colorVS       *d3d9.VertexShader
+	colorPS       *d3d9.PixelShader
+	colorDecl     *d3d9.VertexDeclaration
+	texVS         *d3d9.VertexShader
+	texPS         *d3d9.PixelShader
+	texDecl       *d3d9.VertexDeclaration
+	vertices      *d3d9.VertexBuffer
+	triangles     *d3d9.VertexBuffer
+	texture       *d3d9.Texture
+	sky           *d3d9.Texture
+	skyVertices   *d3d9.VertexBuffer
+	floor         *d3d9.Texture
+	floorVertices *d3d9.VertexBuffer
 
 	// game related rendering data
 	mvp d3dmath.Mat4
@@ -446,23 +448,64 @@ func createGeometry(device *d3d9.Device) {
 	check(err)
 
 	triangles = createVertexBuffer(device, []float32{
-		-3 + 0, -0.5, 0,
+		-3 + 0, 0, 0,
 		-3 + 0, 1,
-		-3 + 1, -0.5, 0,
+		-3 + 1, 0, 0,
 		-3 + 1, 1,
-		-3 + 0, 0.5, 0,
+		-3 + 0, 1, 0,
 		-3 + 0, 0,
 
-		5 + 0, -0.5, 0,
+		5 + 0, 0, 0,
 		0, 0,
-		5 + 1, -0.5, 0,
+		5 + 1, 0, 0,
 		0, 1,
-		5 + 0, 0.5, 0,
+		5 + 0, 1, 0,
 		1, 0,
 	})
 
 	texture = loadTexture(device, "texture.png")
 	sky = loadTexture(device, "sky.png")
+
+	floor = loadTexture(device, "floor.png")
+	floorVertices = createVertexBuffer(device, heightFieldVertices())
+}
+
+var heightField = [][]float32{
+	{0.1, 0, 0, 0, 0},
+	{0, 0, 0, 0, 0},
+	{0, 0, -0.05, 0, 0},
+	{0, 0, 1.075, 0, 0},
+	{0, 0, 0, 0, 0.05},
+}
+
+func heightFieldVertices() []float32 {
+	size := len(heightField) - 1
+	h := make([]float32, 0, size*size*6*(3+2))
+	for x := 0; x < size; x++ {
+		for z := 0; z < size; z++ {
+			i, j := size-z, x
+			y1 := heightField[i][j]
+			y2 := heightField[i][j+1]
+			y3 := heightField[i-1][j]
+			y4 := heightField[i-1][j+1]
+			h = append(h, []float32{
+				float32(x), y1, float32(z),
+				0, 1,
+				float32(x + 1), y2, float32(z),
+				1, 1,
+				float32(x), y3, float32(z + 1),
+				0, 0,
+
+				float32(x), y3, float32(z + 1),
+				0, 0,
+				float32(x + 1), y2, float32(z),
+				1, 1,
+				float32(x + 1), y4, float32(z + 1),
+				1, 0,
+			}...)
+		}
+	}
+	return h
 }
 
 func loadTexture(device *d3d9.Device, path string) *d3d9.Texture {
@@ -558,6 +601,14 @@ func destroyGeometry() {
 		sky.Release()
 		sky = nil
 	}
+	if floor != nil {
+		floor.Release()
+		floor = nil
+	}
+	if floorVertices != nil {
+		floorVertices.Release()
+		floorVertices = nil
+	}
 }
 
 func rad2deg(x float32) float32 {
@@ -630,6 +681,7 @@ func updateGame() {
 }
 
 func skyMVP() d3dmath.Mat4 {
+	m := d3dmath.Translate(0, -0.05, 0)
 	v := d3dmath.LookAt(
 		d3dmath.Vec3{},
 		gameState.viewDir,
@@ -641,7 +693,7 @@ func skyMVP() d3dmath.Mat4 {
 		100,
 		0.001,
 	)
-	return d3dmath.Mul4(v, p)
+	return d3dmath.Mul4(m, v, p)
 }
 
 func renderGeometry(device *d3d9.Device) {
@@ -665,6 +717,18 @@ func renderGeometry(device *d3d9.Device) {
 	check(device.SetTexture(0, texture))
 	check(device.SetStreamSource(0, triangles, 0, (3+2)*4))
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 2)
+
+	// draw floor
+	size := len(heightField) - 1
+	floorMVP := d3dmath.Mul4(
+		d3dmath.Translate(-float32(size)/2, 0, -float32(size)/2),
+		d3dmath.Scale(3, 3, 3),
+		mvp,
+	).Transposed()
+	check(device.SetVertexShaderConstantF(0, floorMVP[:]))
+	check(device.SetTexture(0, floor))
+	check(device.SetStreamSource(0, floorVertices, 0, (3+2)*4))
+	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, uint(size*size*2))
 }
 
 const fieldOfViewDeg = 70
@@ -687,6 +751,6 @@ var gameState struct {
 
 func init() {
 	gameState.moveSpeed = 0.1
-	gameState.camPos = d3dmath.Vec3{0, 0, -10}
+	gameState.camPos = d3dmath.Vec3{0, 0.5, -10}
 	gameState.viewDir = d3dmath.Vec3{0, 0, 1}.Normalized()
 }
