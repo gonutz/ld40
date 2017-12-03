@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"image"
 	"image/draw"
 	"image/png"
+	"io"
 	"io/ioutil"
 	"math"
 	"os"
@@ -14,8 +17,10 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/gonutz/blob"
 	"github.com/gonutz/d3d9"
 	"github.com/gonutz/d3dmath"
+	"github.com/gonutz/payload"
 	"github.com/gonutz/w32"
 	"github.com/gonutz/win"
 )
@@ -611,7 +616,7 @@ func loadTexture(device *d3d9.Device, path string) *d3d9.Texture {
 }
 
 func loadPng(path string) *image.NRGBA {
-	f, err := os.Open(path)
+	f, err := open(path)
 	check(err)
 	defer f.Close()
 
@@ -626,6 +631,29 @@ func loadPng(path string) *image.NRGBA {
 		return n
 	}
 }
+
+func open(path string) (io.ReadCloser, error) {
+	data, err := payload.Open()
+	if err != nil {
+		return os.Open(path)
+	}
+	defer data.Close()
+	list, err := blob.Read(data)
+	if err != nil {
+		return nil, err
+	}
+	d, found := list.GetByID(path)
+	if !found {
+		return nil, errors.New("data for '" + path + "' not found in payload blob")
+	}
+	return dummyCloser{bytes.NewReader(d)}, nil
+}
+
+type dummyCloser struct {
+	io.Reader
+}
+
+func (dummyCloser) Close() error { return nil }
 
 func createVertexBuffer(device *d3d9.Device, data []float32) *d3d9.VertexBuffer {
 	buf, err := device.CreateVertexBuffer(
