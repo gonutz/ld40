@@ -129,13 +129,15 @@ func main() {
 		createFlags = d3d9.CREATE_HARDWARE_VERTEXPROCESSING
 	}
 	presentParameters := d3d9.PRESENT_PARAMETERS{
-		Windowed:         1,
-		HDeviceWindow:    d3d9.HWND(window),
-		SwapEffect:       d3d9.SWAPEFFECT_COPY, // so Present can use rects
-		BackBufferWidth:  uint32(windowW),
-		BackBufferHeight: uint32(windowH),
-		BackBufferFormat: d3d9.FMT_UNKNOWN,
-		BackBufferCount:  1,
+		Windowed:               1,
+		HDeviceWindow:          d3d9.HWND(window),
+		SwapEffect:             d3d9.SWAPEFFECT_COPY, // so Present can use rects
+		BackBufferWidth:        uint32(windowW),
+		BackBufferHeight:       uint32(windowH),
+		BackBufferFormat:       d3d9.FMT_UNKNOWN,
+		BackBufferCount:        1,
+		EnableAutoDepthStencil: 1,
+		AutoDepthStencilFormat: d3d9.FMT_D24X8,
 	}
 	device, actualPP, err := d3d.CreateDevice(
 		d3d9.ADAPTER_DEFAULT,
@@ -154,10 +156,14 @@ func main() {
 	//toggleFullscreen(window)
 
 	setRenderState := func(device *d3d9.Device) {
-		device.SetRenderState(d3d9.RS_CULLMODE, d3d9.CULL_NONE)
-		device.SetRenderState(d3d9.RS_SRCBLEND, d3d9.BLEND_SRCALPHA)
-		device.SetRenderState(d3d9.RS_DESTBLEND, d3d9.BLEND_INVSRCALPHA)
-		device.SetRenderState(d3d9.RS_ALPHABLENDENABLE, 1)
+		check(device.SetRenderState(d3d9.RS_CULLMODE, d3d9.CULL_NONE))
+		check(device.SetRenderState(d3d9.RS_ALPHABLENDENABLE, 0))
+		check(device.SetRenderState(d3d9.RS_ZENABLE, d3d9.ZB_TRUE))
+		// TODO this is strange: usually you use d3d9.CMP_LESS here but that
+		// does not render anything for me. instead we have to flip the near and
+		// far plane values in the d3dmath.Perspective matrix (further down) and
+		// use GREATER here. why is that?!
+		check(device.SetRenderState(d3d9.RS_ZFUNC, d3d9.CMP_GREATER))
 	}
 	setRenderState(device)
 
@@ -190,7 +196,7 @@ func main() {
 			}
 
 			if !deviceIsLost {
-				device.SetViewport(
+				check(device.SetViewport(
 					d3d9.VIEWPORT{
 						X:      0,
 						Y:      0,
@@ -199,18 +205,18 @@ func main() {
 						MinZ:   0,
 						MaxZ:   1,
 					},
-				)
+				))
 
-				device.Clear(
+				check(device.Clear(
 					nil,
-					d3d9.CLEAR_TARGET,
+					d3d9.CLEAR_TARGET+d3d9.CLEAR_ZBUFFER,
 					d3d9.ColorRGB(255, 0, 0),
 					1,
 					0,
-				)
-				device.BeginScene()
+				))
+				check(device.BeginScene())
 				renderGeometry(device)
-				device.EndScene()
+				check(device.EndScene())
 				r := &d3d9.RECT{0, 0, int32(windowW), int32(windowH)}
 				presentErr := device.Present(r, r, 0, nil)
 				if presentErr != nil {
@@ -262,15 +268,17 @@ func handlePanics() {
 
 var (
 	// d3d9 assets
-	colorVS   *d3d9.VertexShader
-	colorPS   *d3d9.PixelShader
-	colorDecl *d3d9.VertexDeclaration
-	texVS     *d3d9.VertexShader
-	texPS     *d3d9.PixelShader
-	texDecl   *d3d9.VertexDeclaration
-	vertices  *d3d9.VertexBuffer
-	uvs       *d3d9.VertexBuffer
-	texture   *d3d9.Texture
+	colorVS     *d3d9.VertexShader
+	colorPS     *d3d9.PixelShader
+	colorDecl   *d3d9.VertexDeclaration
+	texVS       *d3d9.VertexShader
+	texPS       *d3d9.PixelShader
+	texDecl     *d3d9.VertexDeclaration
+	vertices    *d3d9.VertexBuffer
+	triangles   *d3d9.VertexBuffer
+	texture     *d3d9.Texture
+	sky         *d3d9.Texture
+	skyVertices *d3d9.VertexBuffer
 
 	// game related rendering data
 	mvp d3dmath.Mat4
@@ -317,6 +325,98 @@ func createGeometry(device *d3d9.Device) {
 		5 + 0, 0.5, 0,
 	})
 
+	skyVertices = createVertexBuffer(device, []float32{
+		// top
+		-1, 1, 1,
+		0, 0.5,
+		1, 1, 1,
+		1.0 / 3, 0.5,
+		-1, 1, -1,
+		0, 0,
+
+		-1, 1, -1,
+		0, 0,
+		1, 1, 1,
+		1.0 / 3, 0.5,
+		1, 1, -1,
+		1.0 / 3, 0,
+
+		// bottom
+		-1, -1, -1,
+		1.0 / 3, 0.5,
+		1, -1, -1,
+		2.0 / 3, 0.5,
+		-1, -1, 1,
+		1.0 / 3, 0,
+
+		-1, -1, 1,
+		1.0 / 3, 0,
+		1, -1, -1,
+		2.0 / 3, 0.5,
+		1, -1, 1,
+		2.0 / 3, 0,
+
+		// left
+		-1, -1, 1,
+		0, 1,
+		1, -1, 1,
+		1.0 / 3, 1,
+		-1, 1, 1,
+		0, 0.5,
+
+		-1, 1, 1,
+		0, 0.5,
+		1, -1, 1,
+		1.0 / 3, 1,
+		1, 1, 1,
+		1.0 / 3, 0.5,
+
+		// front
+		-1, -1, -1,
+		2.0 / 3, 0.5,
+		-1, -1, 1,
+		1, 0.5,
+		-1, 1, -1,
+		2.0 / 3, 0,
+
+		-1, 1, -1,
+		2.0 / 3, 0,
+		-1, -1, 1,
+		1, 0.5,
+		-1, 1, 1,
+		1, 0,
+
+		// right
+		1, -1, 1,
+		1.0 / 3, 1,
+		1, -1, -1,
+		2.0 / 3, 1,
+		1, 1, 1,
+		1.0 / 3, 0.5,
+
+		1, 1, 1,
+		1.0 / 3, 0.5,
+		1, -1, -1,
+		2.0 / 3, 1,
+		1, 1, -1,
+		2.0 / 3, 0.5,
+
+		// back
+		1, -1, -1,
+		2.0 / 3, 1,
+		-1, -1, -1,
+		1, 1,
+		1, 1, -1,
+		2.0 / 3, 0.5,
+
+		1, 1, -1,
+		2.0 / 3, 0.5,
+		-1, -1, -1,
+		1, 1,
+		-1, 1, -1,
+		1, 0.5,
+	})
+
 	texVS, err = device.CreateVertexShaderFromBytes(vertexShader_texture)
 	check(err)
 	texPS, err = device.CreatePixelShaderFromBytes(pixelShader_texture)
@@ -333,8 +433,8 @@ func createGeometry(device *d3d9.Device) {
 				UsageIndex: 0,
 			},
 			d3d9.VERTEXELEMENT{
-				Stream:     1,
-				Offset:     0,
+				Stream:     0,
+				Offset:     3 * 4,
 				Type:       d3d9.DECLTYPE_FLOAT2,
 				Method:     d3d9.DECLMETHOD_DEFAULT,
 				Usage:      d3d9.DECLUSAGE_TEXCOORD,
@@ -345,18 +445,29 @@ func createGeometry(device *d3d9.Device) {
 	)
 	check(err)
 
-	uvs = createVertexBuffer(device, []float32{
-		0, 1,
-		1, 1,
-		0, 0,
+	triangles = createVertexBuffer(device, []float32{
+		-3 + 0, -0.5, 0,
+		-3 + 0, 1,
+		-3 + 1, -0.5, 0,
+		-3 + 1, 1,
+		-3 + 0, 0.5, 0,
+		-3 + 0, 0,
 
+		5 + 0, -0.5, 0,
 		0, 0,
+		5 + 1, -0.5, 0,
 		0, 1,
+		5 + 0, 0.5, 0,
 		1, 0,
 	})
 
-	img := loadPng("texture.png")
-	texture, err = device.CreateTexture(
+	texture = loadTexture(device, "texture.png")
+	sky = loadTexture(device, "sky.png")
+}
+
+func loadTexture(device *d3d9.Device, path string) *d3d9.Texture {
+	img := loadPng(path)
+	texture, err := device.CreateTexture(
 		uint(img.Bounds().Dx()),
 		uint(img.Bounds().Dy()),
 		1,
@@ -370,6 +481,7 @@ func createGeometry(device *d3d9.Device) {
 	check(err)
 	r.SetAllBytes(img.Pix, img.Stride)
 	check(texture.UnlockRect(0))
+	return texture
 }
 
 func loadPng(path string) *image.NRGBA {
@@ -422,9 +534,9 @@ func destroyGeometry() {
 		vertices.Release()
 		vertices = nil
 	}
-	if uvs != nil {
-		uvs.Release()
-		uvs = nil
+	if triangles != nil {
+		triangles.Release()
+		triangles = nil
 	}
 	if texture != nil {
 		texture.Release()
@@ -441,6 +553,10 @@ func destroyGeometry() {
 	if texVS != nil {
 		texVS.Release()
 		texVS = nil
+	}
+	if sky != nil {
+		sky.Release()
+		sky = nil
 	}
 }
 
@@ -507,26 +623,32 @@ func updateGame() {
 	p := d3dmath.Perspective(
 		deg2rad(fieldOfViewDeg),
 		float32(windowW)/float32(windowH),
-		0.001,
 		100,
+		0.001,
 	)
 	mvp = d3dmath.Mul4(m, v, p)
 }
 
 func renderGeometry(device *d3d9.Device) {
-	check(device.SetTexture(0, texture))
 	check(device.SetVertexShader(texVS))
 	check(device.SetPixelShader(texPS))
 	shaderMVP := mvp.Transposed() // shader expected column-major ordering
 	check(device.SetVertexShaderConstantF(0, shaderMVP[:]))
 	//check(device.SetVertexShaderConstantF(4, []float32{gameState.red, 0, 1, 1}))
 	check(device.SetVertexDeclaration(texDecl))
-	check(device.SetStreamSource(0, vertices, 0, 3*4))
-	check(device.SetStreamSource(1, uvs, 0, 2*4))
+
+	// draw sky box
+	check(device.SetTexture(0, sky))
+	check(device.SetStreamSource(0, skyVertices, 0, (3+2)*4))
+	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 12)
+
+	// draw triangles
+	check(device.SetTexture(0, texture))
+	check(device.SetStreamSource(0, triangles, 0, (3+2)*4))
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 2)
 }
 
-const fieldOfViewDeg = 90
+const fieldOfViewDeg = 70
 
 var gameState struct {
 	centerX, centerY int
@@ -546,6 +668,6 @@ var gameState struct {
 
 func init() {
 	gameState.moveSpeed = 0.1
-	gameState.camPos = d3dmath.Vec3{2.8, 0, -2}
+	gameState.camPos = d3dmath.Vec3{0, 0, 0}
 	gameState.viewDir = d3dmath.Vec3{0, 0, 1}.Normalized()
 }
