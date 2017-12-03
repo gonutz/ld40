@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
 	"io/ioutil"
 	"math"
 	"os"
@@ -148,7 +151,7 @@ func main() {
 	// NOTE comment this to switch between starting in fullscreen or not
 	//      this has to come after the presentParameters so the back buffer has
 	//      the size of the whole screen
-	toggleFullscreen(window)
+	//toggleFullscreen(window)
 
 	setRenderState := func(device *d3d9.Device) {
 		device.SetRenderState(d3d9.RS_CULLMODE, d3d9.CULL_NONE)
@@ -262,7 +265,12 @@ var (
 	colorVS   *d3d9.VertexShader
 	colorPS   *d3d9.PixelShader
 	colorDecl *d3d9.VertexDeclaration
+	texVS     *d3d9.VertexShader
+	texPS     *d3d9.PixelShader
+	texDecl   *d3d9.VertexDeclaration
 	vertices  *d3d9.VertexBuffer
+	uvs       *d3d9.VertexBuffer
+	texture   *d3d9.Texture
 
 	// game related rendering data
 	mvp d3dmath.Mat4
@@ -308,6 +316,77 @@ func createGeometry(device *d3d9.Device) {
 		5 + 1, -0.5, 0,
 		5 + 0, 0.5, 0,
 	})
+
+	texVS, err = device.CreateVertexShaderFromBytes(vertexShader_texture)
+	check(err)
+	texPS, err = device.CreatePixelShaderFromBytes(pixelShader_texture)
+	check(err)
+
+	texDecl, err = device.CreateVertexDeclaration(
+		[]d3d9.VERTEXELEMENT{
+			d3d9.VERTEXELEMENT{
+				Stream:     0,
+				Offset:     0,
+				Type:       d3d9.DECLTYPE_FLOAT3,
+				Method:     d3d9.DECLMETHOD_DEFAULT,
+				Usage:      d3d9.DECLUSAGE_POSITION,
+				UsageIndex: 0,
+			},
+			d3d9.VERTEXELEMENT{
+				Stream:     1,
+				Offset:     0,
+				Type:       d3d9.DECLTYPE_FLOAT2,
+				Method:     d3d9.DECLMETHOD_DEFAULT,
+				Usage:      d3d9.DECLUSAGE_TEXCOORD,
+				UsageIndex: 0,
+			},
+			d3d9.DeclEnd(),
+		},
+	)
+	check(err)
+
+	uvs = createVertexBuffer(device, []float32{
+		0, 1,
+		1, 1,
+		0, 0,
+
+		0, 0,
+		0, 1,
+		1, 0,
+	})
+
+	img := loadPng("texture.png")
+	texture, err = device.CreateTexture(
+		uint(img.Bounds().Dx()),
+		uint(img.Bounds().Dy()),
+		1,
+		d3d9.USAGE_SOFTWAREPROCESSING,
+		d3d9.FMT_A8R8G8B8,
+		d3d9.POOL_MANAGED,
+		0,
+	)
+	check(err)
+	r, err := texture.LockRect(0, nil, d3d9.LOCK_DISCARD)
+	check(err)
+	r.SetAllBytes(img.Pix, img.Stride)
+	check(texture.UnlockRect(0))
+}
+
+func loadPng(path string) *image.NRGBA {
+	f, err := os.Open(path)
+	check(err)
+	defer f.Close()
+
+	img, err := png.Decode(f)
+	check(err)
+
+	if n, ok := img.(*image.NRGBA); ok {
+		return n
+	} else {
+		n := image.NewNRGBA(img.Bounds())
+		draw.Draw(n, n.Bounds(), img, img.Bounds().Min, draw.Src)
+		return n
+	}
 }
 
 func createVertexBuffer(device *d3d9.Device, data []float32) *d3d9.VertexBuffer {
@@ -342,6 +421,26 @@ func destroyGeometry() {
 	if vertices != nil {
 		vertices.Release()
 		vertices = nil
+	}
+	if uvs != nil {
+		uvs.Release()
+		uvs = nil
+	}
+	if texture != nil {
+		texture.Release()
+		texture = nil
+	}
+	if texDecl != nil {
+		texDecl.Release()
+		texDecl = nil
+	}
+	if texPS != nil {
+		texPS.Release()
+		texPS = nil
+	}
+	if texVS != nil {
+		texVS.Release()
+		texVS = nil
 	}
 }
 
@@ -415,13 +514,15 @@ func updateGame() {
 }
 
 func renderGeometry(device *d3d9.Device) {
-	check(device.SetVertexShader(colorVS))
-	check(device.SetPixelShader(colorPS))
+	check(device.SetTexture(0, texture))
+	check(device.SetVertexShader(texVS))
+	check(device.SetPixelShader(texPS))
 	shaderMVP := mvp.Transposed() // shader expected column-major ordering
 	check(device.SetVertexShaderConstantF(0, shaderMVP[:]))
-	check(device.SetVertexShaderConstantF(4, []float32{gameState.red, 0, 1, 1}))
-	check(device.SetVertexDeclaration(colorDecl))
+	//check(device.SetVertexShaderConstantF(4, []float32{gameState.red, 0, 1, 1}))
+	check(device.SetVertexDeclaration(texDecl))
 	check(device.SetStreamSource(0, vertices, 0, 3*4))
+	check(device.SetStreamSource(1, uvs, 0, 2*4))
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 2)
 }
 
@@ -445,6 +546,6 @@ var gameState struct {
 
 func init() {
 	gameState.moveSpeed = 0.1
-	gameState.camPos = d3dmath.Vec3{0, 0, -5}
+	gameState.camPos = d3dmath.Vec3{2.8, 0, -2}
 	gameState.viewDir = d3dmath.Vec3{0, 0, 1}.Normalized()
 }

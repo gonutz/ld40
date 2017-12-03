@@ -1,0 +1,13 @@
+sampler imageTex;
+
+struct input {
+	float2 texCoord: TEXCOORD0;
+};
+
+struct output {
+	float4 color : COLOR0;
+};
+
+void main(in input IN, out output OUT) {
+	OUT.color = tex2D(imageTex, IN.texCoord);
+}
