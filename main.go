@@ -249,7 +249,7 @@ func handlePanics() {
 		// write it to a log file
 		filename := filepath.Join(
 			os.Getenv("APPDATA"),
-			"ide_log_"+time.Now().Format("2006_01_02__15_04_05")+".txt",
+			"ld40_log_"+time.Now().Format("2006_01_02__15_04_05")+".txt",
 		)
 		ioutil.WriteFile(filename, []byte(msg), 0777)
 
