@@ -76,6 +76,10 @@ func main() {
 					gameState.keyLeftDown = true
 				case 'D':
 					gameState.keyRightDown = true
+				case w32.VK_SHIFT:
+					gameState.keySpeedDown = true
+				case w32.VK_CONTROL:
+					gameState.keySneakDown = true
 				case w32.VK_ESCAPE:
 					win.CloseWindow(window)
 				case w32.VK_F11:
@@ -92,6 +96,10 @@ func main() {
 					gameState.keyLeftDown = false
 				case 'D':
 					gameState.keyRightDown = false
+				case w32.VK_SHIFT:
+					gameState.keySpeedDown = false
+				case w32.VK_CONTROL:
+					gameState.keySneakDown = false
 				}
 				return 0
 			case w32.WM_SIZE:
@@ -699,26 +707,35 @@ func updateGame() {
 	mouseDy := gameState.mouseY - gameState.centerY
 	w32.SetCursorPos(gameState.centerX, gameState.centerY)
 
+	speed := gameState.moveSpeed
+	if gameState.keySpeedDown {
+		speed *= 2
+	} else if gameState.keySneakDown {
+		speed *= 0.5
+	}
+	moveDir := gameState.viewDir
+	moveDir[1] = 0
+	moveDir = moveDir.Normalized()
 	if gameState.keyForwardDown {
 		gameState.camPos = gameState.camPos.Add(
-			gameState.viewDir.MulScalar(gameState.moveSpeed),
+			moveDir.MulScalar(speed),
 		)
 	}
 	if gameState.keyBackwardDown {
 		gameState.camPos = gameState.camPos.Add(
-			gameState.viewDir.MulScalar(-gameState.moveSpeed),
+			moveDir.MulScalar(-speed),
 		)
 	}
 	if gameState.keyLeftDown {
 		gameState.camPos = gameState.camPos.Add(
 			gameState.viewDir.Cross(d3dmath.Vec3{0, 1, 0}).
-				MulScalar(gameState.moveSpeed),
+				MulScalar(speed),
 		)
 	}
 	if gameState.keyRightDown {
 		gameState.camPos = gameState.camPos.Add(
 			d3dmath.Vec3{0, 1, 0}.Cross(gameState.viewDir).
-				MulScalar(gameState.moveSpeed),
+				MulScalar(speed),
 		)
 	}
 	if mouseDx != 0 {
@@ -727,7 +744,8 @@ func updateGame() {
 		).DropW().Normalized()
 	}
 	if mouseDy != 0 {
-		// TODO some looking up and down
+		gameState.viewDir[1] -= float32(mouseDy) / 500
+		gameState.viewDir = gameState.viewDir.Normalized()
 	}
 
 	gameState.camPos[1] = heightAt(
@@ -819,6 +837,8 @@ var gameState struct {
 	keyBackwardDown bool
 	keyLeftDown     bool
 	keyRightDown    bool
+	keySpeedDown    bool
+	keySneakDown    bool
 
 	rotDeg    float32
 	red       float32
