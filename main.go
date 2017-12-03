@@ -629,20 +629,39 @@ func updateGame() {
 	mvp = d3dmath.Mul4(m, v, p)
 }
 
+func skyMVP() d3dmath.Mat4 {
+	v := d3dmath.LookAt(
+		d3dmath.Vec3{},
+		gameState.viewDir,
+		d3dmath.Vec3{0, 1, 0},
+	)
+	p := d3dmath.Perspective(
+		deg2rad(fieldOfViewDeg),
+		float32(windowW)/float32(windowH),
+		100,
+		0.001,
+	)
+	return d3dmath.Mul4(v, p)
+}
+
 func renderGeometry(device *d3d9.Device) {
 	check(device.SetVertexShader(texVS))
 	check(device.SetPixelShader(texPS))
-	shaderMVP := mvp.Transposed() // shader expected column-major ordering
-	check(device.SetVertexShaderConstantF(0, shaderMVP[:]))
 	//check(device.SetVertexShaderConstantF(4, []float32{gameState.red, 0, 1, 1}))
 	check(device.SetVertexDeclaration(texDecl))
 
 	// draw sky box
+	check(device.SetRenderState(d3d9.RS_ZENABLE, d3d9.ZB_FALSE))
+	skyMVP := skyMVP().Transposed() // shader expected column-major ordering
+	check(device.SetVertexShaderConstantF(0, skyMVP[:]))
 	check(device.SetTexture(0, sky))
 	check(device.SetStreamSource(0, skyVertices, 0, (3+2)*4))
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 12)
 
 	// draw triangles
+	check(device.SetRenderState(d3d9.RS_ZENABLE, d3d9.ZB_TRUE))
+	shaderMVP := mvp.Transposed() // shader expected column-major ordering
+	check(device.SetVertexShaderConstantF(0, shaderMVP[:]))
 	check(device.SetTexture(0, texture))
 	check(device.SetStreamSource(0, triangles, 0, (3+2)*4))
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 2)
@@ -668,6 +687,6 @@ var gameState struct {
 
 func init() {
 	gameState.moveSpeed = 0.1
-	gameState.camPos = d3dmath.Vec3{0, 0, 0}
+	gameState.camPos = d3dmath.Vec3{0, 0, -10}
 	gameState.viewDir = d3dmath.Vec3{0, 0, 1}.Normalized()
 }
