@@ -148,7 +148,7 @@ func main() {
 	// NOTE comment this to switch between starting in fullscreen or not
 	//      this has to come after the presentParameters so the back buffer has
 	//      the size of the whole screen
-	//toggleFullscreen(window)
+	toggleFullscreen(window)
 
 	setRenderState := func(device *d3d9.Device) {
 		device.SetRenderState(d3d9.RS_CULLMODE, d3d9.CULL_NONE)
@@ -300,9 +300,13 @@ func createGeometry(device *d3d9.Device) {
 	check(err)
 
 	vertices = createVertexBuffer(device, []float32{
-		0, 0, 0,
-		1, 0, 0,
-		0, 1, 0,
+		0, -0.5, 0,
+		1, -0.5, 0,
+		0, 0.5, 0,
+
+		5 + 0, -0.5, 0,
+		5 + 1, -0.5, 0,
+		5 + 0, 0.5, 0,
 	})
 }
 
@@ -395,6 +399,7 @@ func updateGame() {
 	m := d3dmath.RotateZ(deg2rad(gameState.rotDeg))
 	m = d3dmath.Mul4(m, d3dmath.RotateX(deg2rad(gameState.rotDeg*0.753)))
 	m = d3dmath.Mul4(m, d3dmath.RotateY(deg2rad(gameState.rotDeg*1.174)))
+	m = d3dmath.Identity4()
 	v := d3dmath.LookAt(
 		gameState.camPos,
 		gameState.camPos.Add(gameState.viewDir),
@@ -417,7 +422,7 @@ func renderGeometry(device *d3d9.Device) {
 	check(device.SetVertexShaderConstantF(4, []float32{gameState.red, 0, 1, 1}))
 	check(device.SetVertexDeclaration(colorDecl))
 	check(device.SetStreamSource(0, vertices, 0, 3*4))
-	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 1)
+	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 2)
 }
 
 const fieldOfViewDeg = 90
