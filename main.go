@@ -491,15 +491,6 @@ func createGeometry(device *d3d9.Device) {
 
 	floor = loadTexture(device, "floor.png")
 
-	//// manual height field
-	//ground.scale = 3
-	//ground.heights = [][]float32{
-	//	{0.1, 0, 0, 0, 0},
-	//	{0, 0, 0, 0, 0},
-	//	{0, 0, -0.05, 0, 0},
-	//	{0, 0, 0.575, 0, 0},
-	//	{0, 0, 0, 0, 0.05},
-	//}
 	// height field from black and white image
 	ground = loadHeightField("heights.png", 2.0/128)
 	ground.tileScale = 0.25
