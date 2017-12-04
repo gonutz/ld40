@@ -501,11 +501,10 @@ func createGeometry(device *d3d9.Device) {
 	//	{0, 0, 0, 0, 0.05},
 	//}
 	// height field from black and white image
-	ground = loadHeightField("heights.png", 1.0/128)
-	ground.tileScale = 1
+	ground = loadHeightField("heights.png", 2.0/128)
+	ground.tileScale = 0.5
 
 	floorVertices = createVertexBuffer(device, heightFieldVertices(ground.heights))
-
 }
 
 func loadHeightField(path string, scale float32) heightField {
@@ -878,7 +877,7 @@ func renderGeometry(device *d3d9.Device) {
 	size := ground.size()
 	floorMVP := d3dmath.Mul4(
 		d3dmath.Translate(ground.offset()),
-		d3dmath.Scale(ground.tileScale, ground.tileScale, ground.tileScale),
+		d3dmath.Scale(ground.tileScale, 1, ground.tileScale),
 		mvp,
 	).Transposed()
 	check(device.SetVertexShaderConstantF(0, floorMVP[:]))
