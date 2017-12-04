@@ -502,7 +502,7 @@ func createGeometry(device *d3d9.Device) {
 	//}
 	// height field from black and white image
 	ground = loadHeightField("heights.png", 2.0/128)
-	ground.tileScale = 0.5
+	ground.tileScale = 0.25
 
 	floorVertices = createVertexBuffer(device, heightFieldVertices(ground.heights))
 }
@@ -886,7 +886,7 @@ func renderGeometry(device *d3d9.Device) {
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, uint(size*size*2))
 }
 
-const fieldOfViewDeg = 70
+const fieldOfViewDeg = 60
 
 var gameState struct {
 	centerX, centerY int
