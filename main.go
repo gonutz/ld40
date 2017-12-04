@@ -25,7 +25,7 @@ import (
 	"github.com/gonutz/win"
 )
 
-var windowW, windowH = 640, 480
+var windowW, windowH = 480, 320
 
 func main() {
 	defer handlePanics()
@@ -33,6 +33,16 @@ func main() {
 	runtime.LockOSThread()
 
 	win.HideConsoleWindow()
+
+	// the initial values for windowW and windowH describe the desired window
+	// client size, not the overall window size (which includes borders and a
+	// title bar) so initially calculate what the window size should be to get a
+	// draw area of the desired size
+	r := w32.RECT{Left: 0, Top: 0, Right: int32(windowW), Bottom: int32(windowH)}
+	if w32.AdjustWindowRect(&r, w32.WS_OVERLAPPEDWINDOW, false) {
+		windowW = int(r.Width())
+		windowH = int(r.Height())
+	}
 
 	var oldWindowPos w32.WINDOWPLACEMENT
 	toggleFullscreen := func(window w32.HWND) {
@@ -491,8 +501,8 @@ func createGeometry(device *d3d9.Device) {
 	//	{0, 0, 0, 0, 0.05},
 	//}
 	// height field from black and white image
-	ground = loadHeightField("heights.png", 3.0/128)
-	ground.tileScale = 0.5
+	ground = loadHeightField("heights.png", 1.0/128)
+	ground.tileScale = 1
 
 	floorVertices = createVertexBuffer(device, heightFieldVertices(ground.heights))
 
@@ -546,22 +556,44 @@ func heightAt(x, z float32, h heightField) float32 {
 	z -= dz
 	size := float32(h.size())
 	if x < 0 || z < 0 || x >= size || z >= size {
-		return 0.5
+		return 0
 	}
+	/* at this point x,z are in tile coordinates
+	        z
+	        ^
+	        |
+	        |
+	   03 13|23 33
+	   02 12|22 32
+	--------+----------> x
+	   01 11|21 31
+	   00 10|20 30
+	        |
+	        |
+	*/
 	ix, iz := int(x), int(z)
-	// TODO differentiate between the two triangles on this tile
-	p := planeLineIntersection(
-		[3]d3dmath.Vec3{
-			d3dmath.Vec3{float32(ix), h.heights[iz][ix], float32(iz)},
-			d3dmath.Vec3{float32(ix + 1), h.heights[iz][ix+1], float32(iz)},
-			d3dmath.Vec3{float32(ix), h.heights[iz+1][ix], float32(iz + 1)},
-		},
-		[2]d3dmath.Vec3{
-			d3dmath.Vec3{x, 0, z},
-			d3dmath.Vec3{x, 1, z},
-		},
-	)
-	return p[1] + 0.5
+	fx, fz := x-float32(ix), z-float32(iz)
+	onLeftTriangle := 1.0-fx > fz
+
+	heightBottomLeft := h.heights[h.size()-iz][ix]
+	heightTopLeft := h.heights[h.size()-iz-1][ix]
+	heightBottomRight := h.heights[h.size()-iz][ix+1]
+	heightTopRight := h.heights[h.size()-iz-1][ix+1]
+	triangle := [3]d3dmath.Vec3{
+		d3dmath.Vec3{1, heightBottomRight, 0},
+		d3dmath.Vec3{0, heightTopLeft, 1},
+	}
+	if onLeftTriangle {
+		triangle[2] = d3dmath.Vec3{0, heightBottomLeft, 0}
+	} else {
+		triangle[2] = d3dmath.Vec3{1, heightTopRight, 1}
+	}
+	line := [2]d3dmath.Vec3{
+		d3dmath.Vec3{fx, 0, fz},
+		d3dmath.Vec3{fx, 1, fz},
+	}
+	p := planeLineIntersection(triangle, line)
+	return p[1]
 }
 
 var ground heightField
@@ -638,11 +670,11 @@ func open(path string) (io.ReadCloser, error) {
 		return os.Open(path)
 	}
 	defer data.Close()
-	list, err := blob.Read(data)
+	dataBlob, err := blob.Read(data)
 	if err != nil {
 		return nil, err
 	}
-	d, found := list.GetByID(path)
+	d, found := dataBlob.GetByID(path)
 	if !found {
 		return nil, errors.New("data for '" + path + "' not found in payload blob")
 	}
@@ -780,7 +812,7 @@ func updateGame() {
 		gameState.camPos[0],
 		gameState.camPos[2],
 		ground,
-	)
+	) + gameState.playerHeight
 
 	gameState.red += 0.01
 	if gameState.red > 1 {
@@ -868,15 +900,17 @@ var gameState struct {
 	keySpeedDown    bool
 	keySneakDown    bool
 
-	rotDeg    float32
-	red       float32
-	moveSpeed float32
-	camPos    d3dmath.Vec3
-	viewDir   d3dmath.Vec3 // must be kept unit length
+	rotDeg       float32
+	red          float32
+	moveSpeed    float32
+	camPos       d3dmath.Vec3
+	viewDir      d3dmath.Vec3 // must be kept unit length
+	playerHeight float32
 }
 
 func init() {
 	gameState.moveSpeed = 0.03
-	gameState.camPos = d3dmath.Vec3{0, 0.5, 0}
+	gameState.playerHeight = 0.4
+	gameState.camPos = d3dmath.Vec3{0, 0, 0}
 	gameState.viewDir = d3dmath.Vec3{0, 0, 1}.Normalized()
 }
