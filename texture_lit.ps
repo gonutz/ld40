@@ -1,0 +1,18 @@
+sampler imageTex;
+
+struct input {
+	float4 color   : COLOR0;
+	float2 texCoord: TEXCOORD0;
+};
+
+struct output {
+	float4 color : COLOR0;
+};
+
+void main(in input IN, out output OUT) {
+	float4 ambientColor = float4(1, 1, 1, 1);
+	float ambientPower = 0.1;
+	
+	float4 texColor = tex2D(imageTex, IN.texCoord);
+	OUT.color = texColor * saturate(IN.color + ambientColor*ambientPower);
+}

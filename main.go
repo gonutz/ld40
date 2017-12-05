@@ -92,7 +92,7 @@ func main() {
 				case 'D':
 					gameState.keyRightDown = true
 				case w32.VK_SHIFT:
-					gameState.keySpeedDown = true
+					gameState.keyRunDown = true
 				case w32.VK_CONTROL:
 					gameState.keySneakDown = true
 				case w32.VK_ESCAPE:
@@ -112,7 +112,7 @@ func main() {
 				case 'D':
 					gameState.keyRightDown = false
 				case w32.VK_SHIFT:
-					gameState.keySpeedDown = false
+					gameState.keyRunDown = false
 				case w32.VK_CONTROL:
 					gameState.keySneakDown = false
 				}
@@ -179,7 +179,8 @@ func main() {
 	//toggleFullscreen(window)
 
 	setRenderState := func(device *d3d9.Device) {
-		check(device.SetRenderState(d3d9.RS_CULLMODE, d3d9.CULL_NONE))
+		//check(device.SetRenderState(d3d9.RS_CULLMODE, d3d9.CULL_NONE))
+		check(device.SetRenderState(d3d9.RS_CULLMODE, d3d9.CULL_CW))
 		check(device.SetRenderState(d3d9.RS_ALPHABLENDENABLE, 0))
 		check(device.SetRenderState(d3d9.RS_ZENABLE, d3d9.ZB_TRUE))
 		// TODO this is strange: usually you use d3d9.CMP_LESS here but that
@@ -297,6 +298,9 @@ var (
 	texVS         *d3d9.VertexShader
 	texPS         *d3d9.PixelShader
 	texDecl       *d3d9.VertexDeclaration
+	texLitVS      *d3d9.VertexShader
+	texLitPS      *d3d9.PixelShader
+	texLitDecl    *d3d9.VertexDeclaration
 	vertices      *d3d9.VertexBuffer
 	triangles     *d3d9.VertexBuffer
 	texture       *d3d9.Texture
@@ -306,7 +310,7 @@ var (
 	floorVertices *d3d9.VertexBuffer
 
 	// game related rendering data
-	mvp d3dmath.Mat4
+	vp d3dmath.Mat4
 )
 
 func createGeometry(device *d3d9.Device) {
@@ -470,6 +474,41 @@ func createGeometry(device *d3d9.Device) {
 	)
 	check(err)
 
+	texLitVS, err = device.CreateVertexShaderFromBytes(vertexShader_texture_lit)
+	check(err)
+	texLitPS, err = device.CreatePixelShaderFromBytes(pixelShader_texture_lit)
+	check(err)
+	texLitDecl, err = device.CreateVertexDeclaration(
+		[]d3d9.VERTEXELEMENT{
+			d3d9.VERTEXELEMENT{
+				Stream:     0,
+				Offset:     0,
+				Type:       d3d9.DECLTYPE_FLOAT3,
+				Method:     d3d9.DECLMETHOD_DEFAULT,
+				Usage:      d3d9.DECLUSAGE_POSITION,
+				UsageIndex: 0,
+			},
+			d3d9.VERTEXELEMENT{
+				Stream:     0,
+				Offset:     3 * 4,
+				Type:       d3d9.DECLTYPE_FLOAT3,
+				Method:     d3d9.DECLMETHOD_DEFAULT,
+				Usage:      d3d9.DECLUSAGE_NORMAL,
+				UsageIndex: 0,
+			},
+			d3d9.VERTEXELEMENT{
+				Stream:     0,
+				Offset:     (3 + 3) * 4,
+				Type:       d3d9.DECLTYPE_FLOAT2,
+				Method:     d3d9.DECLMETHOD_DEFAULT,
+				Usage:      d3d9.DECLUSAGE_TEXCOORD,
+				UsageIndex: 0,
+			},
+			d3d9.DeclEnd(),
+		},
+	)
+	check(err)
+
 	triangles = createVertexBuffer(device, []float32{
 		-3 + 0, 0, 0,
 		-3 + 0, 1,
@@ -492,13 +531,14 @@ func createGeometry(device *d3d9.Device) {
 	floor = loadTexture(device, "floor.png")
 
 	// height field from black and white image
-	ground = loadHeightField("heights.png", 2.0/128)
-	ground.tileScale = 0.25
+	ground = loadHeightField("heights.png")
+	ground.scale = d3dmath.Vec3{0.25, 1.3, 0.25}
 
-	floorVertices = createVertexBuffer(device, heightFieldVertices(ground.heights))
+	floorVertices = createVertexBuffer(device, heightFieldVertices(ground))
 }
 
-func loadHeightField(path string, scale float32) heightField {
+func loadHeightField(path string) heightField {
+	const scale = 1.0 / 127
 	var field heightField
 
 	img := loadPng(path)
@@ -524,8 +564,8 @@ func loadHeightField(path string, scale float32) heightField {
 }
 
 type heightField struct {
-	heights   [][]float32
-	tileScale float32 // the height field is first offset, then scaled
+	heights [][]float32
+	scale   d3dmath.Vec3 // the height field is first offset, then scaled
 }
 
 func (h heightField) size() int {
@@ -538,9 +578,16 @@ func (h heightField) offset() (x, y, z float32) {
 	return
 }
 
+func (h heightField) modelTransform() d3dmath.Mat4 {
+	return d3dmath.Mul4(
+		d3dmath.Translate(h.offset()),
+		d3dmath.Scale(h.scale[0], h.scale[1], h.scale[2]),
+	)
+}
+
 func heightAt(x, z float32, h heightField) float32 {
-	x /= h.tileScale
-	z /= h.tileScale
+	x /= h.scale[0]
+	z /= h.scale[2]
 	dx, _, dz := h.offset()
 	x -= dx
 	z -= dz
@@ -583,36 +630,123 @@ func heightAt(x, z float32, h heightField) float32 {
 		d3dmath.Vec3{fx, 1, fz},
 	}
 	p := planeLineIntersection(triangle, line)
-	return p[1]
+	return p[1] * h.scale[1]
 }
 
 var ground heightField
 
-func heightFieldVertices(heightField [][]float32) []float32 {
-	size := len(heightField) - 1
-	h := make([]float32, 0, size*size*6*(3+2))
+func heightFieldVertices(heightField heightField) []float32 {
+	size := len(heightField.heights) - 1
+	h := make([]float32, 0, size*size*6*(3+3+2)) // 2 triangles: pos, normal, uv
 	for z := 0; z < size; z++ {
 		for x := 0; x < size; x++ {
+			fx, fz := float32(x), float32(z)
 			i, j := size-z, x
-			y1 := heightField[i][j]
-			y2 := heightField[i][j+1]
-			y3 := heightField[i-1][j]
-			y4 := heightField[i-1][j+1]
-			h = append(h, []float32{
-				float32(x), y1, float32(z),
-				0, 1,
-				float32(x + 1), y2, float32(z),
-				1, 1,
-				float32(x), y3, float32(z + 1),
-				0, 0,
+			y1 := heightField.heights[i][j]
+			y2 := heightField.heights[i][j+1]
+			y3 := heightField.heights[i-1][j]
+			y4 := heightField.heights[i-1][j+1]
+			if z == 0 || x == 0 || z == size-1 || x == size-1 {
+				// at the edges the normals are set to 0,1,0
+				h = append(h, []float32{
+					fx, y1, fz,
+					0, 1, 0,
+					0, 1,
+					fx + 1, y2, fz,
+					0, 1, 0,
+					1, 1,
+					fx, y3, fz + 1,
+					0, 1, 0,
+					0, 0,
 
-				float32(x), y3, float32(z + 1),
-				0, 0,
-				float32(x + 1), y2, float32(z),
-				1, 1,
-				float32(x + 1), y4, float32(z + 1),
-				1, 0,
-			}...)
+					fx, y3, fz + 1,
+					0, 1, 0,
+					0, 0,
+					fx + 1, y2, fz,
+					0, 1, 0,
+					1, 1,
+					fx + 1, y4, fz + 1,
+					0, 1, 0,
+					1, 0,
+				}...)
+			} else {
+				n := [2 + 3 + 4 + 3 + 2]d3dmath.Vec3{
+					{fx + 0, heightField.heights[i+1][j+0], fz - 1},
+					{fx - 1, heightField.heights[i+0][j-1], fz + 0},
+					{fx + 1, heightField.heights[i+1][j+1], fz - 1},
+					{fx + 0, heightField.heights[i+0][j+0], fz + 0},
+					{fx - 1, heightField.heights[i-1][j-1], fz + 1},
+					{fx + 2, heightField.heights[i+1][j+2], fz - 1},
+					{fx + 1, heightField.heights[i+0][j+1], fz + 0},
+					{fx + 0, heightField.heights[i-1][j+0], fz + 1},
+					{fx - 1, heightField.heights[i-2][j-1], fz + 2},
+					{fx + 2, heightField.heights[i+0][j+2], fz + 0},
+					{fx + 1, heightField.heights[i-1][j+1], fz + 1},
+					{fx + 0, heightField.heights[i-2][j+0], fz + 2},
+					{fx + 2, heightField.heights[i-1][j+2], fz + 1},
+					{fx + 1, heightField.heights[i-2][j+1], fz + 2},
+				}
+				for i := range n {
+					n[i][0] *= heightField.scale[0]
+					n[i][1] *= heightField.scale[1]
+					n[i][2] *= heightField.scale[2]
+				}
+				normals := [16]d3dmath.Vec3{
+					n[3].Sub(n[0]).Cross(n[2].Sub(n[0])),
+					n[0].Sub(n[3]).Cross(n[1].Sub(n[3])),
+					n[4].Sub(n[1]).Cross(n[3].Sub(n[1])),
+					n[6].Sub(n[2]).Cross(n[5].Sub(n[2])),
+					n[2].Sub(n[6]).Cross(n[3].Sub(n[6])),
+					n[7].Sub(n[3]).Cross(n[6].Sub(n[3])),
+					n[3].Sub(n[7]).Cross(n[4].Sub(n[7])),
+					n[8].Sub(n[4]).Cross(n[7].Sub(n[4])),
+					n[5].Sub(n[9]).Cross(n[6].Sub(n[9])),
+					n[10].Sub(n[6]).Cross(n[9].Sub(n[6])),
+					n[6].Sub(n[10]).Cross(n[7].Sub(n[10])),
+					n[11].Sub(n[7]).Cross(n[10].Sub(n[7])),
+					n[7].Sub(n[11]).Cross(n[8].Sub(n[11])),
+					n[9].Sub(n[12]).Cross(n[10].Sub(n[12])),
+					n[13].Sub(n[10]).Cross(n[12].Sub(n[10])),
+					n[10].Sub(n[13]).Cross(n[11].Sub(n[13])),
+				}
+				n00 := d3dmath.AddVec3(
+					normals[0], normals[1], normals[2],
+					normals[4], normals[5], normals[6],
+				).Normalized()
+				n10 := d3dmath.AddVec3(
+					normals[3], normals[4], normals[5],
+					normals[8], normals[9], normals[10],
+				).Normalized()
+				n01 := d3dmath.AddVec3(
+					normals[5], normals[6], normals[7],
+					normals[10], normals[11], normals[12],
+				).Normalized()
+				n11 := d3dmath.AddVec3(
+					normals[9], normals[10], normals[11],
+					normals[13], normals[14], normals[15],
+				).Normalized()
+				h = append(h, []float32{
+					fx, y1, fz,
+					n00[0], n00[1], n00[2],
+					0, 1,
+					fx + 1, y2, fz,
+					n10[0], n10[1], n10[2],
+					1, 1,
+					fx, y3, fz + 1,
+					n01[0], n01[1], n01[2],
+					0, 0,
+
+					fx, y3, fz + 1,
+					n01[0], n01[1], n01[2],
+					0, 0,
+					fx + 1, y2, fz,
+					n10[0], n10[1], n10[2],
+					1, 1,
+					fx + 1, y4, fz + 1,
+					n11[0], n11[1], n11[2],
+					1, 0,
+				}...)
+			}
 		}
 	}
 	return h
@@ -742,6 +876,18 @@ func destroyGeometry() {
 		floorVertices.Release()
 		floorVertices = nil
 	}
+	if texLitVS != nil {
+		texLitVS.Release()
+		texLitVS = nil
+	}
+	if texLitPS != nil {
+		texLitPS.Release()
+		texLitPS = nil
+	}
+	if texLitDecl != nil {
+		texLitDecl.Release()
+		texLitDecl = nil
+	}
 }
 
 func rad2deg(x float32) float32 {
@@ -758,10 +904,10 @@ func updateGame() {
 	w32.SetCursorPos(gameState.centerX, gameState.centerY)
 
 	speed := gameState.moveSpeed
-	if gameState.keySpeedDown {
-		speed *= 2
+	if gameState.keyRunDown {
+		speed *= runSpeedMultiplier
 	} else if gameState.keySneakDown {
-		speed *= 0.5
+		speed *= sneakSpeedMultiplier
 	}
 	moveDir := gameState.viewDir
 	moveDir[1] = 0
@@ -811,7 +957,6 @@ func updateGame() {
 
 	gameState.rotDeg += 1.4
 
-	m := d3dmath.Identity4()
 	v := d3dmath.LookAt(
 		gameState.camPos,
 		gameState.camPos.Add(gameState.viewDir),
@@ -823,7 +968,7 @@ func updateGame() {
 		100,
 		0.001,
 	)
-	mvp = d3dmath.Mul4(m, v, p)
+	vp = d3dmath.Mul4(v, p)
 }
 
 func skyMVP() d3dmath.Mat4 {
@@ -843,6 +988,13 @@ func skyMVP() d3dmath.Mat4 {
 }
 
 func renderGeometry(device *d3d9.Device) {
+	//caps, err := device.GetDeviceCaps()
+	//check(err)
+	//check(device.SetSamplerState(0, d3d9.SAMP_MAXANISOTROPY, caps.MaxAnisotropy))
+	//check(device.SetSamplerState(0, d3d9.SAMP_MINFILTER, d3d9.TEXF_LINEAR))
+	//check(device.SetSamplerState(0, d3d9.SAMP_MAGFILTER, d3d9.TEXF_LINEAR))
+	//check(device.SetSamplerState(0, d3d9.SAMP_MIPFILTER, d3d9.TEXF_LINEAR))
+
 	check(device.SetVertexShader(texVS))
 	check(device.SetPixelShader(texPS))
 	//check(device.SetVertexShaderConstantF(4, []float32{gameState.red, 0, 1, 1}))
@@ -858,26 +1010,29 @@ func renderGeometry(device *d3d9.Device) {
 
 	// draw triangles
 	check(device.SetRenderState(d3d9.RS_ZENABLE, d3d9.ZB_TRUE))
-	shaderMVP := mvp.Transposed() // shader expected column-major ordering
+	shaderMVP := vp.Transposed() // shader expected column-major ordering
 	check(device.SetVertexShaderConstantF(0, shaderMVP[:]))
 	check(device.SetTexture(0, texture))
 	check(device.SetStreamSource(0, triangles, 0, (3+2)*4))
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 2)
 
 	// draw floor
+	check(device.SetVertexShader(texLitVS))
+	check(device.SetPixelShader(texLitPS))
+	check(device.SetVertexDeclaration(texLitDecl))
 	size := ground.size()
-	floorMVP := d3dmath.Mul4(
-		d3dmath.Translate(ground.offset()),
-		d3dmath.Scale(ground.tileScale, 1, ground.tileScale),
-		mvp,
-	).Transposed()
+	floorMVP := ground.modelTransform().Mul(vp).Transposed()
 	check(device.SetVertexShaderConstantF(0, floorMVP[:]))
 	check(device.SetTexture(0, floor))
-	check(device.SetStreamSource(0, floorVertices, 0, (3+2)*4))
+	check(device.SetStreamSource(0, floorVertices, 0, (3+3+2)*4))
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, uint(size*size*2))
 }
 
-const fieldOfViewDeg = 60
+const (
+	fieldOfViewDeg       = 60
+	runSpeedMultiplier   = 2
+	sneakSpeedMultiplier = 0.5
+)
 
 var gameState struct {
 	centerX, centerY int
@@ -887,7 +1042,7 @@ var gameState struct {
 	keyBackwardDown bool
 	keyLeftDown     bool
 	keyRightDown    bool
-	keySpeedDown    bool
+	keyRunDown      bool
 	keySneakDown    bool
 
 	rotDeg       float32
