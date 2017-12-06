@@ -3,8 +3,9 @@
 package main
 
 import (
-	"github.com/gonutz/img"
 	"math/rand"
+
+	"github.com/gonutz/img"
 )
 
 func main() {
