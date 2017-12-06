@@ -138,6 +138,7 @@ func main() {
 	)
 	check(err)
 	w32.SetWindowText(window, "LD 40 - The more you have, the worse it is")
+	win.SetIconFromExe(window, 10)
 	toggleFullscreen(window)
 	computeScreenCenter(window)
 
