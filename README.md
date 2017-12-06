@@ -17,6 +17,7 @@ F11      to toggle fullscreen
 In order to build this game you must have the following prerequisites installed:
 
 - [the Go programming language](https://golang.org/dl/)
+  
   Make sure you have your `GOPATH` environment variable set and then add `%GOPATH%\bin` to your `PATH` environment variable.
 
 - [Git](https://git-scm.com/downloads)
