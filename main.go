@@ -551,7 +551,7 @@ func loadHeightField(path string) heightField {
 	heights := make([]float32, 0, w*h)
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
-			heights = append(heights, (float32(img.NRGBAAt(x, y).R)-127)*scale)
+			heights = append(heights, (float32(img.RGBAAt(x, y).R)-127)*scale)
 		}
 	}
 
@@ -772,7 +772,7 @@ func loadTexture(device *d3d9.Device, path string) *d3d9.Texture {
 	return texture
 }
 
-func loadPng(path string) *image.NRGBA {
+func loadPng(path string) *image.RGBA {
 	f, err := open(path)
 	check(err)
 	defer f.Close()
@@ -780,10 +780,10 @@ func loadPng(path string) *image.NRGBA {
 	img, err := png.Decode(f)
 	check(err)
 
-	if n, ok := img.(*image.NRGBA); ok {
+	if n, ok := img.(*image.RGBA); ok {
 		return n
 	} else {
-		n := image.NewNRGBA(img.Bounds())
+		n := image.NewRGBA(img.Bounds())
 		draw.Draw(n, n.Bounds(), img, img.Bounds().Min, draw.Src)
 		return n
 	}
