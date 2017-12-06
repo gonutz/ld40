@@ -13,7 +13,7 @@ struct output {
 };
 
 void main(in input IN, out output OUT) {
-	float3 diffuseDir = normalize(-float3(1, -1, 0));
+	float3 diffuseDir = normalize(-float3(-0.7, -0.1, 0.7));
 	float4 diffuseColor = float4(1, 1, 1, 1);
 	float diffusePower = 1.0;
 	
