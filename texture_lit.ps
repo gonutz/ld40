@@ -11,7 +11,7 @@ struct output {
 
 void main(in input IN, out output OUT) {
 	float4 ambientColor = float4(1, 1, 1, 1);
-	float ambientPower = 0.3;
+	float ambientPower = 0.5;
 	
 	float4 texColor = tex2D(imageTex, IN.texCoord);
 	OUT.color = texColor * saturate(IN.color + ambientColor*ambientPower);
