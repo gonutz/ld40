@@ -664,7 +664,7 @@ func (h heightField) offset() (x, y, z float32) {
 func (h heightField) modelTransform() d3dmath.Mat4 {
 	return d3dmath.Mul4(
 		d3dmath.Translate(h.offset()),
-		d3dmath.Scale(h.scale[0], h.scale[1], h.scale[2]),
+		d3dmath.ScaleV(h.scale),
 	)
 }
 
@@ -980,7 +980,7 @@ func updateGame() {
 	if gameState.keyShootDown {
 		gameState.keyShootDown = false
 		origin := gameState.pos.Add(
-			d3dmath.Vec3{0, gameState.playerHeight * 0.8, 0},
+			d3dmath.Vec3{0, gameState.playerHeight * 0.9, 0},
 		)
 		step := 1.0 * min(ground.scale[0], ground.scale[2]) * 0.5
 		dir := gameState.viewDir.MulScalar(step)
@@ -1095,12 +1095,14 @@ func renderGeometry(device *d3d9.Device) {
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 12)
 
 	// draw triangles
+	check(device.SetRenderState(d3d9.RS_CULLMODE, d3d9.CULL_NONE))
 	check(device.SetRenderState(d3d9.RS_ZENABLE, d3d9.ZB_TRUE))
-	shaderMVP := vp.Transposed() // shader expected column-major ordering
-	check(device.SetVertexShaderConstantF(0, shaderMVP[:]))
+	triMVP := vp.Transposed() // shader expected column-major ordering
+	check(device.SetVertexShaderConstantF(0, triMVP[:]))
 	check(device.SetTexture(0, texture))
 	check(device.SetStreamSource(0, triangles, 0, (3+2)*4))
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 2)
+	check(device.SetRenderState(d3d9.RS_CULLMODE, d3d9.CULL_CW))
 
 	// draw floor
 	check(device.SetVertexShader(texLitVS))
@@ -1126,7 +1128,7 @@ func renderGeometry(device *d3d9.Device) {
 			diff := beam.end.Sub(beam.start)
 			length := diff.Norm()
 			scale := d3dmath.Scale(0.005, 1, length)
-			offset := d3dmath.Translate(beam.start[0], beam.start[1], beam.start[2])
+			offset := d3dmath.TranslateV(beam.start)
 			yRad := math.Atan2(float64(diff[2]), float64(diff[0]))
 			rotY := d3dmath.RotateY(math.Pi/2 - float32(yRad))
 			xRad := math.Atan2(float64(length), float64(-diff[1]))
