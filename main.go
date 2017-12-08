@@ -1125,7 +1125,7 @@ func renderGeometry(device *d3d9.Device) {
 		for _, beam := range gameState.laserBeams {
 			diff := beam.end.Sub(beam.start)
 			length := diff.Norm()
-			scale := d3dmath.Scale(0.01, 1, length)
+			scale := d3dmath.Scale(0.005, 1, length)
 			offset := d3dmath.Translate(beam.start[0], beam.start[1], beam.start[2])
 			yRad := math.Atan2(float64(diff[2]), float64(diff[0]))
 			rotY := d3dmath.RotateY(math.Pi/2 - float32(yRad))
