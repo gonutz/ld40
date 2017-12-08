@@ -82,6 +82,10 @@ func main() {
 			case w32.WM_MOUSELEAVE:
 				return 0
 			case w32.WM_KEYDOWN:
+				if l&(1<<30) != 0 {
+					// if the key was down before, ignore it, no auto-repeat
+					return 0
+				}
 				switch w {
 				case 'W':
 					gameState.keyForwardDown = true
@@ -95,6 +99,8 @@ func main() {
 					gameState.keyRunDown = true
 				case w32.VK_CONTROL:
 					gameState.keySneakDown = true
+				case w32.VK_SPACE:
+					gameState.keyJumpDown = true
 				case w32.VK_ESCAPE:
 					win.CloseWindow(window)
 				case w32.VK_F11:
@@ -115,6 +121,8 @@ func main() {
 					gameState.keyRunDown = false
 				case w32.VK_CONTROL:
 					gameState.keySneakDown = false
+				case w32.VK_SPACE:
+					gameState.keyJumpDown = false
 				}
 				return 0
 			case w32.WM_SIZE:
@@ -900,6 +908,17 @@ func deg2rad(x float32) float32 {
 }
 
 func updateGame() {
+	if gameState.keyJumpDown && !gameState.inAir {
+		gameState.inAir = true
+		gameState.velY = gameState.jumpSpeed
+	}
+	gameState.keyJumpDown = false
+
+	if gameState.inAir {
+		gameState.pos[1] += gameState.velY
+		gameState.velY += gameState.gravity
+	}
+
 	mouseDx := gameState.mouseX - gameState.centerX
 	mouseDy := gameState.mouseY - gameState.centerY
 	w32.SetCursorPos(gameState.centerX, gameState.centerY)
@@ -914,25 +933,19 @@ func updateGame() {
 	moveDir[1] = 0
 	moveDir = moveDir.Normalized()
 	if gameState.keyForwardDown {
-		gameState.camPos = gameState.camPos.Add(
-			moveDir.MulScalar(speed),
-		)
+		gameState.pos = gameState.pos.Add(moveDir.MulScalar(speed))
 	}
 	if gameState.keyBackwardDown {
-		gameState.camPos = gameState.camPos.Add(
-			moveDir.MulScalar(-speed),
-		)
+		gameState.pos = gameState.pos.Add(moveDir.MulScalar(-speed))
 	}
 	if gameState.keyLeftDown {
-		gameState.camPos = gameState.camPos.Add(
-			gameState.viewDir.Cross(d3dmath.Vec3{0, 1, 0}).
-				MulScalar(speed),
+		gameState.pos = gameState.pos.Add(
+			gameState.viewDir.Cross(d3dmath.Vec3{0, 1, 0}).MulScalar(speed),
 		)
 	}
 	if gameState.keyRightDown {
-		gameState.camPos = gameState.camPos.Add(
-			d3dmath.Vec3{0, 1, 0}.Cross(gameState.viewDir).
-				MulScalar(speed),
+		gameState.pos = gameState.pos.Add(
+			d3dmath.Vec3{0, 1, 0}.Cross(gameState.viewDir).MulScalar(speed),
 		)
 	}
 	if mouseDx != 0 {
@@ -945,11 +958,13 @@ func updateGame() {
 		gameState.viewDir = gameState.viewDir.Normalized()
 	}
 
-	gameState.camPos[1] = heightAt(
-		gameState.camPos[0],
-		gameState.camPos[2],
-		ground,
-	) + gameState.playerHeight
+	y := heightAt(gameState.pos[0], gameState.pos[2], ground)
+	if gameState.pos[1] < y {
+		gameState.inAir = false
+	}
+	if !gameState.inAir {
+		gameState.pos[1] = y
+	}
 
 	gameState.red += 0.01
 	if gameState.red > 1 {
@@ -958,9 +973,11 @@ func updateGame() {
 
 	gameState.rotDeg += 1.4
 
+	camPos := gameState.pos
+	camPos[1] += gameState.playerHeight
 	v := d3dmath.LookAt(
-		gameState.camPos,
-		gameState.camPos.Add(gameState.viewDir),
+		camPos,
+		camPos.Add(gameState.viewDir),
 		d3dmath.Vec3{0, 1, 0},
 	)
 	p := d3dmath.Perspective(
@@ -1045,18 +1062,25 @@ var gameState struct {
 	keyRightDown    bool
 	keyRunDown      bool
 	keySneakDown    bool
+	keyJumpDown     bool
 
 	rotDeg       float32
 	red          float32
 	moveSpeed    float32
-	camPos       d3dmath.Vec3
+	pos          d3dmath.Vec3 // player position in the world
 	viewDir      d3dmath.Vec3 // must be kept unit length
 	playerHeight float32
+	velY         float32
+	inAir        bool
+	jumpSpeed    float32
+	gravity      float32
 }
 
 func init() {
 	gameState.moveSpeed = 0.03
+	gameState.jumpSpeed = 0.046
+	gameState.gravity = -0.0025
 	gameState.playerHeight = 0.4
-	gameState.camPos = d3dmath.Vec3{0, 0, 0}
+	gameState.pos = d3dmath.Vec3{0, 0, 0}
 	gameState.viewDir = d3dmath.Vec3{0, 0, 1}.Normalized()
 }

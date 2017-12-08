@@ -7,6 +7,7 @@ Ludum Dare 40 Entry - The more you have, the worse it is
 ```
 WASD     to move
 Mouse    to look around
+Space    jump
 Shift    to run
 Control  to sneak
 F11      to toggle fullscreen
