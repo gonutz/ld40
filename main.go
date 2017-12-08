@@ -79,7 +79,11 @@ func main() {
 				y := int((uint(l) >> 16) & 0xFFFF)
 				gameState.mouseX, gameState.mouseY = w32.ClientToScreen(window, x, y)
 				return 0
-			case w32.WM_MOUSELEAVE:
+			case w32.WM_LBUTTONDOWN:
+				gameState.keyShootDown = true
+				return 0
+			case w32.WM_LBUTTONUP:
+				gameState.keyShootDown = false
 				return 0
 			case w32.WM_KEYDOWN:
 				if l&(1<<30) != 0 {
@@ -188,7 +192,6 @@ func main() {
 	//toggleFullscreen(window)
 
 	setRenderState := func(device *d3d9.Device) {
-		//check(device.SetRenderState(d3d9.RS_CULLMODE, d3d9.CULL_NONE))
 		check(device.SetRenderState(d3d9.RS_CULLMODE, d3d9.CULL_CW))
 		check(device.SetRenderState(d3d9.RS_ALPHABLENDENABLE, 0))
 		check(device.SetRenderState(d3d9.RS_ZENABLE, d3d9.ZB_TRUE))
@@ -301,9 +304,9 @@ func handlePanics() {
 
 var (
 	// d3d9 assets
-	colorVS       *d3d9.VertexShader
-	colorPS       *d3d9.PixelShader
-	colorDecl     *d3d9.VertexDeclaration
+	uniColorVS    *d3d9.VertexShader
+	uniColorPS    *d3d9.PixelShader
+	uniColorDecl  *d3d9.VertexDeclaration
 	texVS         *d3d9.VertexShader
 	texPS         *d3d9.PixelShader
 	texDecl       *d3d9.VertexDeclaration
@@ -317,20 +320,89 @@ var (
 	skyVertices   *d3d9.VertexBuffer
 	floor         *d3d9.Texture
 	floorVertices *d3d9.VertexBuffer
-
-	// game related rendering data
-	vp d3dmath.Mat4
+	square        *d3d9.VertexBuffer
 )
+
+func destroyGeometry() {
+	if uniColorVS != nil {
+		uniColorVS.Release()
+		uniColorVS = nil
+	}
+	if uniColorPS != nil {
+		uniColorPS.Release()
+		uniColorPS = nil
+	}
+	if uniColorDecl != nil {
+		uniColorDecl.Release()
+		uniColorDecl = nil
+	}
+	if texVS != nil {
+		texVS.Release()
+		texVS = nil
+	}
+	if texPS != nil {
+		texPS.Release()
+		texPS = nil
+	}
+	if texDecl != nil {
+		texDecl.Release()
+		texDecl = nil
+	}
+	if texLitVS != nil {
+		texLitVS.Release()
+		texLitVS = nil
+	}
+	if texLitPS != nil {
+		texLitPS.Release()
+		texLitPS = nil
+	}
+	if texLitDecl != nil {
+		texLitDecl.Release()
+		texLitDecl = nil
+	}
+	if vertices != nil {
+		vertices.Release()
+		vertices = nil
+	}
+	if triangles != nil {
+		triangles.Release()
+		triangles = nil
+	}
+	if texture != nil {
+		texture.Release()
+		texture = nil
+	}
+	if sky != nil {
+		sky.Release()
+		sky = nil
+	}
+	if skyVertices != nil {
+		skyVertices.Release()
+		skyVertices = nil
+	}
+	if floor != nil {
+		floor.Release()
+		floor = nil
+	}
+	if floorVertices != nil {
+		floorVertices.Release()
+		floorVertices = nil
+	}
+	if square != nil {
+		square.Release()
+		square = nil
+	}
+}
 
 func createGeometry(device *d3d9.Device) {
 	var err error
 
-	colorVS, err = device.CreateVertexShaderFromBytes(vertexShader_uniform_color)
+	uniColorVS, err = device.CreateVertexShaderFromBytes(vertexShader_uniform_color)
 	check(err)
-	colorPS, err = device.CreatePixelShaderFromBytes(pixelShader_uniform_color)
+	uniColorPS, err = device.CreatePixelShaderFromBytes(pixelShader_uniform_color)
 	check(err)
 
-	colorDecl, err = device.CreateVertexDeclaration(
+	uniColorDecl, err = device.CreateVertexDeclaration(
 		[]d3d9.VERTEXELEMENT{
 			d3d9.VERTEXELEMENT{
 				Stream:     0,
@@ -338,14 +410,6 @@ func createGeometry(device *d3d9.Device) {
 				Type:       d3d9.DECLTYPE_FLOAT3,
 				Method:     d3d9.DECLMETHOD_DEFAULT,
 				Usage:      d3d9.DECLUSAGE_POSITION,
-				UsageIndex: 0,
-			},
-			d3d9.VERTEXELEMENT{
-				Stream:     0,
-				Offset:     3 * 4,
-				Type:       d3d9.DECLTYPE_FLOAT4,
-				Method:     d3d9.DECLMETHOD_DEFAULT,
-				Usage:      d3d9.DECLUSAGE_COLOR,
 				UsageIndex: 0,
 			},
 			d3d9.DeclEnd(),
@@ -532,6 +596,16 @@ func createGeometry(device *d3d9.Device) {
 		0, 1,
 		5 + 0, 1, 0,
 		1, 0,
+	})
+
+	square = createVertexBuffer(device, []float32{
+		0, 0, 0,
+		1, 0, 0,
+		0, 0, 1,
+
+		0, 0, 1,
+		1, 0, 0,
+		1, 0, 1,
 	})
 
 	texture = loadTexture(device, "texture.png")
@@ -836,69 +910,6 @@ func createVertexBuffer(device *d3d9.Device, data []float32) *d3d9.VertexBuffer 
 	return buf
 }
 
-func destroyGeometry() {
-	if colorVS != nil {
-		colorVS.Release()
-		colorVS = nil
-	}
-	if colorPS != nil {
-		colorPS.Release()
-		colorPS = nil
-	}
-	if colorDecl != nil {
-		colorDecl.Release()
-		colorDecl = nil
-	}
-	if vertices != nil {
-		vertices.Release()
-		vertices = nil
-	}
-	if triangles != nil {
-		triangles.Release()
-		triangles = nil
-	}
-	if texture != nil {
-		texture.Release()
-		texture = nil
-	}
-	if texDecl != nil {
-		texDecl.Release()
-		texDecl = nil
-	}
-	if texPS != nil {
-		texPS.Release()
-		texPS = nil
-	}
-	if texVS != nil {
-		texVS.Release()
-		texVS = nil
-	}
-	if sky != nil {
-		sky.Release()
-		sky = nil
-	}
-	if floor != nil {
-		floor.Release()
-		floor = nil
-	}
-	if floorVertices != nil {
-		floorVertices.Release()
-		floorVertices = nil
-	}
-	if texLitVS != nil {
-		texLitVS.Release()
-		texLitVS = nil
-	}
-	if texLitPS != nil {
-		texLitPS.Release()
-		texLitPS = nil
-	}
-	if texLitDecl != nil {
-		texLitDecl.Release()
-		texLitDecl = nil
-	}
-}
-
 func rad2deg(x float32) float32 {
 	return x * 180 / math.Pi
 }
@@ -966,27 +977,69 @@ func updateGame() {
 		gameState.pos[1] = y
 	}
 
-	gameState.red += 0.01
-	if gameState.red > 1 {
-		gameState.red -= 1
+	if gameState.keyShootDown {
+		gameState.keyShootDown = false
+		origin := gameState.pos.Add(
+			d3dmath.Vec3{0, gameState.playerHeight * 0.8, 0},
+		)
+		step := 1.0 * min(ground.scale[0], ground.scale[2]) * 0.5
+		dir := gameState.viewDir.MulScalar(step)
+		p := origin
+		const maxShootSteps = 1000
+		for i := 0; i < maxShootSteps; i++ {
+			y := heightAt(p[0], p[2], ground)
+			if p[1] <= y {
+				// TODO at this point maybe iterate a couple of times with dir/2
+				// towards the actual collision point; the closer it is to the
+				// player, the more important it is to locate it properly since
+				// the player will see it better
+				p[1] = y
+				break
+			}
+			p = p.Add(dir)
+		}
+		shootLaser(origin, p)
 	}
 
-	gameState.rotDeg += 1.4
+	i := 0
+	for i < len(gameState.laserBeams) {
+		if gameState.laserBeams[i].life <= 0 {
+			gameState.laserBeams = append(
+				gameState.laserBeams[:i],
+				gameState.laserBeams[i+1:]...,
+			)
+		} else {
+			gameState.laserBeams[i].life += laserBeamDecay
+			i++
+		}
+	}
+}
 
-	camPos := gameState.pos
-	camPos[1] += gameState.playerHeight
-	v := d3dmath.LookAt(
-		camPos,
-		camPos.Add(gameState.viewDir),
-		d3dmath.Vec3{0, 1, 0},
-	)
-	p := d3dmath.Perspective(
-		deg2rad(fieldOfViewDeg),
-		float32(windowW)/float32(windowH),
-		100,
-		0.001,
-	)
-	vp = d3dmath.Mul4(v, p)
+func min(a, b float32) float32 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b float32) float32 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func shootLaser(from, to d3dmath.Vec3) {
+	gameState.laserBeams = append(gameState.laserBeams, laserBeam{
+		life:  1,
+		start: from,
+		end:   to,
+	})
+}
+
+type laserBeam struct {
+	life       float32
+	start, end d3dmath.Vec3
 }
 
 func skyMVP() d3dmath.Mat4 {
@@ -1006,6 +1059,21 @@ func skyMVP() d3dmath.Mat4 {
 }
 
 func renderGeometry(device *d3d9.Device) {
+	camPos := gameState.pos
+	camPos[1] += gameState.playerHeight
+	v := d3dmath.LookAt(
+		camPos,
+		camPos.Add(gameState.viewDir),
+		d3dmath.Vec3{0, 1, 0},
+	)
+	p := d3dmath.Perspective(
+		deg2rad(fieldOfViewDeg),
+		float32(windowW)/float32(windowH),
+		100,
+		0.001,
+	)
+	vp := d3dmath.Mul4(v, p)
+
 	//caps, err := device.GetDeviceCaps()
 	//check(err)
 	//check(device.SetSamplerState(0, d3d9.SAMP_MAXANISOTROPY, caps.MaxAnisotropy))
@@ -1044,12 +1112,46 @@ func renderGeometry(device *d3d9.Device) {
 	check(device.SetTexture(0, floor))
 	check(device.SetStreamSource(0, floorVertices, 0, (3+3+2)*4))
 	device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, uint(size*size*2))
+
+	// draw laser beams
+	if len(gameState.laserBeams) > 0 {
+		check(device.SetRenderState(d3d9.RS_ALPHABLENDENABLE, 1))
+		check(device.SetRenderState(d3d9.RS_SRCBLEND, d3d9.BLEND_SRCALPHA))
+		check(device.SetRenderState(d3d9.RS_DESTBLEND, d3d9.BLEND_INVSRCALPHA))
+		check(device.SetVertexDeclaration(uniColorDecl))
+		check(device.SetVertexShader(uniColorVS))
+		check(device.SetPixelShader(uniColorPS))
+		check(device.SetStreamSource(0, square, 0, 3*4))
+		for _, beam := range gameState.laserBeams {
+			diff := beam.end.Sub(beam.start)
+			length := diff.Norm()
+			scale := d3dmath.Scale(0.01, 1, length)
+			offset := d3dmath.Translate(beam.start[0], beam.start[1], beam.start[2])
+			yRad := math.Atan2(float64(diff[2]), float64(diff[0]))
+			rotY := d3dmath.RotateY(math.Pi/2 - float32(yRad))
+			xRad := math.Atan2(float64(length), float64(-diff[1]))
+			rotX := d3dmath.RotateX(math.Pi/2 - float32(xRad))
+			m := d3dmath.Mul4(scale, rotX, rotY, offset)
+			mvp := d3dmath.Mul4(m, vp).Transposed()
+			check(device.SetPixelShaderConstantF(0, []float32{1, 0, 0, beam.life}))
+			check(device.SetVertexShaderConstantF(0, mvp[:]))
+			device.DrawPrimitive(d3d9.PT_TRIANGLELIST, 0, 2)
+		}
+		check(device.SetRenderState(d3d9.RS_ALPHABLENDENABLE, 0))
+	}
 }
+
+// TODO bites me a lot: implicit connection between
+// - CreateVertexDeclaration
+// - SetStreamSource
+// - createVertexBuffer
+// these all have to know what a vertex for the shader is made of
 
 const (
 	fieldOfViewDeg       = 60
 	runSpeedMultiplier   = 2
 	sneakSpeedMultiplier = 0.5
+	laserBeamDecay       = -0.05
 )
 
 var gameState struct {
@@ -1063,9 +1165,8 @@ var gameState struct {
 	keyRunDown      bool
 	keySneakDown    bool
 	keyJumpDown     bool
+	keyShootDown    bool
 
-	rotDeg       float32
-	red          float32
 	moveSpeed    float32
 	pos          d3dmath.Vec3 // player position in the world
 	viewDir      d3dmath.Vec3 // must be kept unit length
@@ -1074,6 +1175,7 @@ var gameState struct {
 	inAir        bool
 	jumpSpeed    float32
 	gravity      float32
+	laserBeams   []laserBeam
 }
 
 func init() {

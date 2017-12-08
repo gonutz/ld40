@@ -1,11 +1,11 @@
-struct input {
-	float4 color : COLOR0;
-};
+float4 color : register(c0);
+
+struct input {};
 
 struct output {
 	float4 color : COLOR0;
 };
 
 void main(in input IN, out output OUT) {
-	OUT.color = IN.color;
+	OUT.color = color;
 }
