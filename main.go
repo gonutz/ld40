@@ -960,7 +960,7 @@ func updateGame() {
 		)
 	}
 	if mouseDx != 0 {
-		gameState.viewDir = gameState.viewDir.Homgeneous().MulMat(
+		gameState.viewDir = gameState.viewDir.Homogeneous().MulMat(
 			d3dmath.RotateY(deg2rad(float32(mouseDx) * 0.125)),
 		).DropW().Normalized()
 	}
