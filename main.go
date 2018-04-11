@@ -66,12 +66,12 @@ func main() {
 		w32.SetCursorPos(gameState.centerX, gameState.centerY)
 	}
 
+	opts := win.DefaultOptions()
+	opts.Width = windowW
+	opts.Height = windowH
+	opts.ClassName = "LD40window"
 	window, err := win.NewWindow(
-		w32.CW_USEDEFAULT,
-		w32.CW_USEDEFAULT,
-		windowW,
-		windowH,
-		"LD40window",
+		opts,
 		func(window w32.HWND, msg uint32, w, l uintptr) uintptr {
 			switch msg {
 			case w32.WM_MOUSEMOVE:
@@ -960,7 +960,7 @@ func updateGame() {
 		)
 	}
 	if mouseDx != 0 {
-		gameState.viewDir = gameState.viewDir.Homgeneous().MulMat(
+		gameState.viewDir = gameState.viewDir.Homogeneous().MulMat(
 			d3dmath.RotateY(deg2rad(float32(mouseDx) * 0.125)),
 		).DropW().Normalized()
 	}
