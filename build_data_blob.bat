@@ -1,6 +1,6 @@
-go get github.com/gonutz/blob/cmd/blob
+go install github.com/gonutz/blob/cmd/blob@latest
 mkdir temp_blob
 copy *.png temp_blob
-blob -folder=temp_blob -out=data.blob
+blob -path=temp_blob -out=data.blob
 del /Q temp_blob\*
 rmdir temp_blob

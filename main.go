@@ -21,7 +21,7 @@ import (
 	"github.com/gonutz/d3d9"
 	"github.com/gonutz/d3dmath"
 	"github.com/gonutz/payload"
-	"github.com/gonutz/w32"
+	"github.com/gonutz/w32/v2"
 	"github.com/gonutz/win"
 )
 
@@ -1088,7 +1088,7 @@ func renderGeometry(device *d3d9.Device) {
 
 	// draw sky box
 	check(device.SetRenderState(d3d9.RS_ZENABLE, d3d9.ZB_FALSE))
-	skyMVP := skyMVP().Transposed() // shader expected column-major ordering
+	skyMVP := skyMVP().Transposed() // shader expects column-major ordering
 	check(device.SetVertexShaderConstantF(0, skyMVP[:]))
 	check(device.SetTexture(0, sky))
 	check(device.SetStreamSource(0, skyVertices, 0, (3+2)*4))
@@ -1097,7 +1097,7 @@ func renderGeometry(device *d3d9.Device) {
 	// draw triangles
 	check(device.SetRenderState(d3d9.RS_CULLMODE, d3d9.CULL_NONE))
 	check(device.SetRenderState(d3d9.RS_ZENABLE, d3d9.ZB_TRUE))
-	triMVP := vp.Transposed() // shader expected column-major ordering
+	triMVP := vp.Transposed() // shader expects column-major ordering
 	check(device.SetVertexShaderConstantF(0, triMVP[:]))
 	check(device.SetTexture(0, texture))
 	check(device.SetStreamSource(0, triangles, 0, (3+2)*4))
